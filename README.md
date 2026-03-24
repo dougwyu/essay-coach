@@ -28,3 +28,5 @@ The AI compares student answers against the instructor's model answer but **neve
 - **Progress** (attempt 2+): What improved since last attempt
 
 Feedback becomes more specific with each attempt, guiding students toward discovering the shape of a good answer through revision.
+
+For a full walkthrough (user guide + developer guide), see [docs/tutorial.md](docs/tutorial.md).

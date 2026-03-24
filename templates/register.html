@@ -39,20 +39,26 @@
             e.preventDefault();
             const errEl = document.getElementById('error-msg');
             errEl.style.display = 'none';
-            const res = await fetch('/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username: document.getElementById('username').value,
-                    password: document.getElementById('password').value,
-                    invite_code: document.getElementById('invite-code').value,
-                })
-            });
-            if (res.ok) {
-                window.location.href = '/instructor';
-            } else {
-                const data = await res.json();
-                errEl.textContent = data.detail || 'Registration failed.';
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value,
+                        invite_code: document.getElementById('invite-code').value,
+                    })
+                });
+                if (res.ok) {
+                    window.location.href = '/instructor';
+                } else {
+                    const data = res.headers.get('content-type')?.includes('application/json')
+                        ? await res.json() : {};
+                    errEl.textContent = data.detail || 'Registration failed.';
+                    errEl.style.display = 'block';
+                }
+            } catch (_) {
+                errEl.textContent = 'Network error. Please try again.';
                 errEl.style.display = 'block';
             }
         });

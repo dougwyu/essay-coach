@@ -180,6 +180,7 @@ function handleAuthError(res) {
 async function loadInviteCode() {
     const res = await fetch('/api/settings/invite-code');
     if (handleAuthError(res)) return;
+    if (!res.ok) return;
     const data = await res.json();
     document.getElementById('invite-code-display').textContent = data.invite_code;
 }
@@ -192,6 +193,7 @@ async function rotateInviteCode() {
         body: JSON.stringify({}),
     });
     if (handleAuthError(res)) return;
+    if (!res.ok) return;
     const data = await res.json();
     document.getElementById('invite-code-display').textContent = data.invite_code;
 }

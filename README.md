@@ -14,8 +14,8 @@ python app.py         # runs on localhost:8000
 
 ## Usage
 
-- **Instructor view** (`/instructor`): Create and manage essay questions with model answers and rubrics.
-- **Student view** (`/student`): Select a question, write an answer, and receive structured AI feedback. Revise and resubmit to improve.
+- **Instructor view** (`/instructor`): Create and manage essay questions with model answers and rubrics. Requires login — register at `/register` using the invite code printed in the terminal on first startup.
+- **Student view** (`/student`): Select a question, write an answer, and receive structured AI feedback. Revise and resubmit to improve. No login required.
 
 ## How Feedback Works
 

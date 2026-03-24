@@ -67,7 +67,7 @@ The migration is idempotent: it only runs if unassigned questions exist.
 | route | change |
 |---|---|
 | `GET /instructor` | Passes all classes the instructor belongs to into the template (for the question filter and the class selector in the create/edit form) |
-| `GET /student` | Renders class code entry form instead of question list; skips to `/student/{class_id}` if localStorage has a stored class |
+| `GET /student` | Renders class code entry form instead of question list; skips to `/student/{class_id}` if localStorage has a stored class. If the stored class_id is stale (server returns 404), clears localStorage and renders the code entry form. |
 | `GET /student/{class_id}` | New route — question list scoped to class (was `GET /student`) |
 | `GET /student/{class_id}/{question_id}` | New route — workspace (was `GET /student/{question_id}`) |
 
@@ -124,7 +124,7 @@ Used on: `GET /api/classes/{class_id}/settings`, both code-rotation routes, and 
 
 ### Student class access
 
-1. Student POSTs `{code}` to `GET /api/classes/by-student-code/{code}`.
+1. Student's browser calls `GET /api/classes/by-student-code/{code}` with the code in the URL path.
 2. Server looks up class by `student_code`. No auth required.
 3. Returns `{class_id, name}` or HTTP 404.
 4. Browser stores `class_id` in localStorage and redirects to `/student/{class_id}`.

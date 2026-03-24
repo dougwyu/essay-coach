@@ -15,12 +15,28 @@ def _connect():
 def init_db():
     conn = _connect()
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS classes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            student_code TEXT UNIQUE NOT NULL,
+            instructor_code TEXT UNIQUE NOT NULL,
+            created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS class_members (
+            class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (class_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_class_members_user_id ON class_members(user_id);
         CREATE TABLE IF NOT EXISTS questions (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             prompt TEXT NOT NULL,
             model_answer TEXT NOT NULL,
             rubric TEXT,
+            class_id TEXT REFERENCES classes(id) ON DELETE CASCADE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS attempts (
@@ -50,6 +66,45 @@ def init_db():
         );
         DELETE FROM sessions WHERE expires_at < datetime('now');
     """)
+
+    # Add class_id column to questions if it doesn't exist yet (migration for pre-Phase-3 DBs)
+    existing_cols = [
+        r[1] for r in conn.execute("PRAGMA table_info(questions)").fetchall()
+    ]
+    if "class_id" not in existing_cols:
+        conn.execute(
+            "ALTER TABLE questions ADD COLUMN class_id TEXT REFERENCES classes(id) ON DELETE CASCADE"
+        )
+        conn.commit()
+
+    # Migration: assign orphaned questions to a Default class
+    orphan_count = conn.execute(
+        "SELECT COUNT(*) FROM questions WHERE class_id IS NULL"
+    ).fetchone()[0]
+    if orphan_count > 0:
+        s_code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        i_code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        default_id = str(uuid.uuid4())
+        # Use first user (by created_at) as creator if any exist
+        first_user = conn.execute(
+            "SELECT id FROM users ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        created_by = first_user[0] if first_user else None
+        conn.execute(
+            "INSERT INTO classes (id, name, student_code, instructor_code, created_by) VALUES (?, ?, ?, ?, ?)",
+            (default_id, "Default", s_code, i_code, created_by),
+        )
+        conn.execute(
+            "UPDATE questions SET class_id = ? WHERE class_id IS NULL", (default_id,)
+        )
+        if created_by:
+            conn.execute(
+                "INSERT OR IGNORE INTO class_members (class_id, user_id) VALUES (?, ?)",
+                (default_id, created_by),
+            )
+        conn.commit()
+
+    # Seed invite code
     row = conn.execute(
         "SELECT value FROM settings WHERE key = 'invite_code'"
     ).fetchone()
@@ -63,12 +118,12 @@ def init_db():
     conn.close()
 
 
-def create_question(title, prompt, model_answer, rubric):
+def create_question(title, prompt, model_answer, rubric, class_id):
     qid = str(uuid.uuid4())
     conn = _connect()
     conn.execute(
-        "INSERT INTO questions (id, title, prompt, model_answer, rubric) VALUES (?, ?, ?, ?, ?)",
-        (qid, title, prompt, model_answer, rubric),
+        "INSERT INTO questions (id, title, prompt, model_answer, rubric, class_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (qid, title, prompt, model_answer, rubric, class_id),
     )
     conn.commit()
     conn.close()
@@ -90,7 +145,7 @@ def list_questions():
 
 
 def update_question(question_id, **kwargs):
-    allowed = {"title", "prompt", "model_answer", "rubric"}
+    allowed = {"title", "prompt", "model_answer", "rubric", "class_id"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return

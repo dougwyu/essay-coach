@@ -105,26 +105,38 @@ def logout(session_token: str | None = Cookie(default=None)):
 
 
 @app.get("/student", response_class=HTMLResponse)
-def student_list(request: Request):
-    questions = list_questions()
-    # SECURITY: model_answer is server-side only, never sent to client
+def student_landing(request: Request):
+    """Class code entry page. JS checks localStorage and may redirect to /student/{class_id}."""
+    return templates.TemplateResponse("student.html", {"request": request, "mode": "landing"})
+
+
+@app.get("/student/{class_id}", response_class=HTMLResponse)
+def student_class_list(request: Request, class_id: str):
+    cls = get_class(class_id)
+    if not cls:
+        return RedirectResponse(url="/student")
+    questions = list_questions_for_class(class_id)
     safe_questions = [
         {"id": q["id"], "title": q["title"], "prompt": q["prompt"]} for q in questions
     ]
     return templates.TemplateResponse(
-        "student.html", {"request": request, "questions": safe_questions, "question": None}
+        "student.html",
+        {"request": request, "mode": "list", "class_id": class_id, "class_name": cls["name"], "questions": safe_questions},
     )
 
 
-@app.get("/student/{question_id}", response_class=HTMLResponse)
-def student_workspace(request: Request, question_id: str):
-    q = get_question(question_id)
-    if not q:
+@app.get("/student/{class_id}/{question_id}", response_class=HTMLResponse)
+def student_workspace(request: Request, class_id: str, question_id: str):
+    cls = get_class(class_id)
+    if not cls:
         return RedirectResponse(url="/student")
-    # SECURITY: model_answer is server-side only, never sent to client
+    q = get_question(question_id)
+    if not q or q.get("class_id") != class_id:
+        return RedirectResponse(url=f"/student/{class_id}")
     safe_question = {"id": q["id"], "title": q["title"], "prompt": q["prompt"]}
     return templates.TemplateResponse(
-        "student.html", {"request": request, "questions": None, "question": safe_question}
+        "student.html",
+        {"request": request, "mode": "workspace", "class_id": class_id, "class_name": cls["name"], "question": safe_question},
     )
 
 
@@ -138,11 +150,29 @@ def instructor_dashboard(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     questions = list_questions()
+    classes = list_classes_for_user(user["id"])
     for q in questions:
         q["attempt_count"] = get_attempt_count(q["id"])
     return templates.TemplateResponse(
         "instructor.html",
-        {"request": request, "questions": questions, "username": user["username"]},
+        {"request": request, "questions": questions, "username": user["username"], "classes": classes},
+    )
+
+
+@app.get("/instructor/classes", response_class=HTMLResponse)
+def instructor_classes_page(
+    request: Request,
+    session_token: str | None = Cookie(default=None),
+):
+    user = _validate_session(session_token)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    classes = list_classes_for_user(user["id"])
+    for cls in classes:
+        cls["question_count"] = get_class_question_count(cls["id"])
+    return templates.TemplateResponse(
+        "instructor-classes.html",
+        {"request": request, "classes": classes, "username": user["username"]},
     )
 
 

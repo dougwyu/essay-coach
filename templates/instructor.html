@@ -69,6 +69,16 @@
         </section>
     </main>
 
+    <div class="classes-section">
+        <h2>Classes</h2>
+        {% for cls in classes %}
+        <p>{{ cls.name }}</p>
+        {% endfor %}
+        {% if not classes %}
+        <p class="empty-state">No classes yet.</p>
+        {% endif %}
+    </div>
+
     <div class="settings-section">
         <h2>Settings</h2>
         <div class="field">

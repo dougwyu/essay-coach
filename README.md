@@ -4,6 +4,8 @@ A local web application that helps university students iteratively improve essay
 
 ## Setup
 
+This version assumes that you have a Claude API key, which is available for purchase at [Claude Dashboard](https://platform.claude.com/dashboard). Future versions will allow substitution with a locally running LLM like ollama or deepseek.
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env  # add your ANTHROPIC_API_KEY

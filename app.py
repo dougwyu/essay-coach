@@ -114,7 +114,7 @@ def student_landing(request: Request):
 def student_class_list(request: Request, class_id: str):
     cls = get_class(class_id)
     if not cls:
-        return RedirectResponse(url="/student")
+        return RedirectResponse(url="/student", status_code=302)
     questions = list_questions_for_class(class_id)
     safe_questions = [
         {"id": q["id"], "title": q["title"], "prompt": q["prompt"]} for q in questions
@@ -129,10 +129,10 @@ def student_class_list(request: Request, class_id: str):
 def student_workspace(request: Request, class_id: str, question_id: str):
     cls = get_class(class_id)
     if not cls:
-        return RedirectResponse(url="/student")
+        return RedirectResponse(url="/student", status_code=302)
     q = get_question(question_id)
     if not q or q.get("class_id") != class_id:
-        return RedirectResponse(url=f"/student/{class_id}")
+        return RedirectResponse(url=f"/student/{class_id}", status_code=302)
     safe_question = {"id": q["id"], "title": q["title"], "prompt": q["prompt"]}
     return templates.TemplateResponse(
         "student.html",

@@ -30,3 +30,7 @@ The AI compares student answers against the instructor's model answer but **neve
 Feedback becomes more specific with each attempt, guiding students toward discovering the shape of a good answer through revision.
 
 For a full walkthrough (user guide + developer guide), see [docs/tutorial.md](docs/tutorial.md).
+
+## Built With
+
+This application was built entirely by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool. Claude Code generated the full stack — backend, frontend, database schema, AI feedback engine, tests, and documentation — from a single architectural prompt.

@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import db as db_module
 from db import (
@@ -20,18 +20,21 @@ from db import (
 @pytest.fixture(autouse=True)
 def test_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr("db.DATABASE_PATH", db_path)
-    db_module.DATABASE_PATH = db_path
+    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
     init_db()
     yield db_path
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _future(days: int = 7) -> str:
-    return (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    return (_now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _past(days: int = 1) -> str:
-    return (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    return (_now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # --- users ---

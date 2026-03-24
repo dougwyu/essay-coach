@@ -9,11 +9,15 @@ A complete guide to using and understanding Essay Coach — the local web app th
 ### Part 1: User Guide
 - [Quick Setup](#quick-setup)
 - [For Instructors](#for-instructors)
+  - [First-Time Setup: Creating Your Account](#first-time-setup-creating-your-account)
+  - [Signing In](#signing-in)
   - [Creating a Question](#creating-a-question)
   - [Writing a Good Model Answer](#writing-a-good-model-answer)
   - [Writing an Effective Rubric](#writing-an-effective-rubric)
   - [Editing and Deleting Questions](#editing-and-deleting-questions)
   - [Viewing Analytics](#viewing-analytics)
+  - [Managing the Invite Code](#managing-the-invite-code)
+  - [Signing Out](#signing-out)
 - [For Students](#for-students)
   - [Selecting a Question](#selecting-a-question)
   - [Writing and Submitting Your Answer](#writing-and-submitting-your-answer)
@@ -68,15 +72,34 @@ python app.py
 The app runs at **http://localhost:8000**. Open it in your browser.
 
 - **Students** go to: `http://localhost:8000/student`
-- **Instructors** go to: `http://localhost:8000/instructor`
-
-There is no login system yet. The instructor page is simply at a different URL. Anyone with the URL can access it. Authentication is planned for Phase 2.
+- **Instructors** go to: `http://localhost:8000/instructor` (login required)
 
 ---
 
 ## For Instructors
 
-The instructor dashboard lives at `/instructor`. From here you create the essay questions that students will answer, along with the hidden model answers the AI uses to generate feedback.
+The instructor dashboard is protected by login. Instructors must create an account before they can access it.
+
+### First-Time Setup: Creating Your Account
+
+1. Start the server (`python app.py`).
+2. Get the invite code the server generated on first startup:
+
+   ```bash
+   sqlite3 essay_coach.db "SELECT value FROM settings WHERE key='invite_code';"
+   ```
+
+3. Navigate to `http://localhost:8000/register`.
+4. Enter a username, a password (8–72 characters), and the invite code from step 2.
+5. Click **Create Account**. You'll be redirected to the instructor dashboard.
+
+The invite code prevents unauthorized registrations. You can view and rotate it any time from the Settings section of the dashboard (see [Managing the Invite Code](#managing-the-invite-code)).
+
+Additional instructors can register using the same invite code. Share it with anyone who should have instructor access.
+
+### Signing In
+
+Navigate to `http://localhost:8000/instructor`. If you're not logged in, you'll be redirected to `/login` automatically. Enter your username and password and click **Sign In**.
 
 ### Creating a Question
 
@@ -137,7 +160,23 @@ Each question card in the "Existing Questions" list has two buttons:
 
 ### Viewing Analytics
 
-Each question card shows an **attempt count** badge (e.g., "5 attempts") — the total number of student submissions across all sessions. This gives you a rough sense of engagement. More detailed analytics (per-student progress, feedback quality) are planned for Phase 2.
+Each question card shows an **attempt count** badge (e.g., "5 attempts") — the total number of student submissions across all sessions. This gives you a rough sense of engagement.
+
+### Managing the Invite Code
+
+The Settings section at the bottom of the instructor dashboard shows the current invite code. Share this code with anyone who should be able to register as an instructor.
+
+To generate a new code, click **Rotate**. The old code stops working immediately — any registration links or notes sharing the old code will need to be updated.
+
+You can also view the current code from the command line:
+
+```bash
+sqlite3 essay_coach.db "SELECT value FROM settings WHERE key='invite_code';"
+```
+
+### Signing Out
+
+Click **Sign Out** in the top-right of the instructor dashboard. Your session is ended and you'll be redirected to the login page.
 
 ---
 
@@ -220,14 +259,15 @@ Browser (vanilla JS) ←→ FastAPI (Python) ←→ SQLite + Anthropic API
 - **Frontend**: Plain HTML, CSS, and JavaScript — no framework, no build step.
 - **Database**: SQLite, stored as a single file (`essay_coach.db`).
 - **AI**: Anthropic Python SDK, calling `claude-sonnet-4-20250514` with streaming.
-
-There is no authentication, no background workers, no caching layer. The entire app is a single Python process.
+- **Auth**: Server-side sessions stored in SQLite. Passwords hashed with bcrypt via passlib. Instructor registration gated by invite code.
 
 ## Project Structure
 
 ```
 essay-coach/
 ├── app.py              # FastAPI app — all routes (HTML + API)
+├── auth.py             # Pure crypto: password hashing, token/code generation
+├── dependencies.py     # FastAPI auth dependency (require_instructor_api)
 ├── feedback.py         # LLM prompt construction and streaming API call
 ├── db.py               # SQLite schema, connection, and query functions
 ├── config.py           # Environment variables and settings
@@ -236,7 +276,9 @@ essay-coach/
 │   └── app.js          # All client-side logic (student + instructor)
 ├── templates/
 │   ├── student.html    # Student question list + workspace (Jinja2)
-│   └── instructor.html # Instructor dashboard (Jinja2)
+│   ├── instructor.html # Instructor dashboard (Jinja2)
+│   ├── login.html      # Instructor login form
+│   └── register.html   # Instructor registration form
 ├── tests/              # Test suite
 ├── requirements.txt    # Python dependencies
 ├── .env.example        # API key placeholder
@@ -254,21 +296,43 @@ Loads environment variables from `.env` using `python-dotenv`. Exposes three set
 - `DATABASE_PATH` — defaults to `essay_coach.db` in the project root.
 - `MODEL_NAME` — hardcoded to `claude-sonnet-4-20250514`.
 
+### `auth.py`
+
+Pure cryptographic utilities with no project imports — only stdlib and passlib. This keeps it independently testable and free of circular imports.
+
+| Function | Purpose |
+|----------|---------|
+| `hash_password(plain)` | Returns a bcrypt hash of the password. |
+| `verify_password(plain, hashed)` | Constant-time bcrypt verification. |
+| `generate_token()` | Returns a 64-character cryptographically random hex session token. |
+| `generate_invite_code()` | Returns a random 8-character uppercase alphanumeric code. |
+| `compare_codes(a, b)` | Constant-time string comparison via `hmac.compare_digest` — prevents timing attacks on invite code checks. |
+
+### `dependencies.py`
+
+FastAPI auth dependency used by all instructor API routes.
+
+- **`_validate_session(token)`**: Looks up the session in the DB, returns `None` if missing or expired, and slides the 7-day expiry window on each valid access.
+- **`require_instructor_api`**: An async FastAPI dependency that reads `session_token` from the cookie and raises HTTP 401 if the session is invalid. Used with `Depends()` on protected routes.
+
+The `GET /instructor` HTML route imports `_validate_session` directly to redirect to `/login` on failure instead of returning a 401.
+
 ### `db.py`
 
 Manages all SQLite interactions. Key design decisions:
 
 - Uses `sqlite3.Row` as the row factory so query results behave like dictionaries.
 - Enables foreign keys with `PRAGMA foreign_keys = ON`.
-- Questions use UUID primary keys (generated in Python, not by SQLite).
-- `ON DELETE CASCADE` on the attempts table means deleting a question removes all its attempts.
+- Questions and users use UUID primary keys (generated in Python, not by SQLite).
+- `ON DELETE CASCADE` on attempts (via questions) and sessions (via users).
 - Every function opens and closes its own connection. This is simple but not suitable for high concurrency — fine for a local tool.
+- On startup, `init_db()` deletes expired sessions and seeds the invite code if absent.
 
-Functions:
+Functions — questions and attempts:
 
 | Function | Purpose |
 |----------|---------|
-| `init_db()` | Creates tables if they don't exist. Called on app startup. |
+| `init_db()` | Creates all tables, cleans expired sessions, seeds invite code. Called on app startup. |
 | `create_question(...)` | Inserts a new question, returns its UUID. |
 | `get_question(id)` | Returns a single question as a dict, or `None`. |
 | `list_questions()` | Returns all questions, newest first. |
@@ -277,6 +341,21 @@ Functions:
 | `create_attempt(...)` | Records a student submission and its feedback. |
 | `get_attempts(question_id, session_id)` | Returns a student's attempts, newest first. |
 | `get_attempt_count(question_id)` | Total submissions across all students. |
+
+Functions — auth:
+
+| Function | Purpose |
+|----------|---------|
+| `create_user(username, password_hash)` | Inserts a new instructor user, returns UUID. |
+| `get_user_by_username(username)` | Returns user dict or `None`. |
+| `get_user_by_id(user_id)` | Returns user dict or `None`. |
+| `create_session(token, user_id, expires_at)` | Inserts a session row. |
+| `get_session(token)` | Returns session if valid and not expired, else `None`. |
+| `update_session_expiry(token, expires_at)` | Slides the session window. |
+| `delete_session(token)` | Removes a single session (used on logout). |
+| `delete_sessions_for_user(user_id)` | Removes all sessions for a user (used on login). |
+| `get_setting(key)` | Returns a settings value or `None`. |
+| `set_setting(key, value)` | Upserts a settings value. |
 
 ### `feedback.py`
 
@@ -301,34 +380,43 @@ The system prompt is embedded as a constant at the top of the file. It instructs
 
 ### `app.py`
 
-The FastAPI application. Has two categories of routes:
+The FastAPI application. Routes are organized into four groups:
 
 **HTML routes** (serve pages):
 - `GET /` → redirects to `/student`
+- `GET /login` → login form
+- `GET /register` → registration form
+- `POST /logout` → ends session, redirects to `/login`
 - `GET /student` → renders question list
-- `GET /student/<id>` → renders writing workspace
-- `GET /instructor` → renders instructor dashboard
+- `GET /student/{id}` → renders writing workspace
+- `GET /instructor` → renders instructor dashboard (redirects to `/login` if not authenticated)
 
-**API routes** (JSON/SSE):
+**Auth API routes**:
+- `POST /api/auth/register` → validates invite code, creates user and session
+- `POST /api/auth/login` → validates credentials, creates session
+- `GET /api/auth/me` → returns `{username}` for the logged-in instructor
+
+**Settings API routes** (instructor-protected):
+- `GET /api/settings/invite-code` → returns current invite code
+- `PUT /api/settings/invite-code` → rotates invite code (generates one if no body supplied)
+
+**Questions API routes** (instructor-protected):
 - `POST /api/questions` → create question
-- `GET /api/questions/detail/<id>` → full question data (instructor only)
-- `PUT /api/questions/<id>` → update question
-- `DELETE /api/questions/<id>` → delete question
-- `POST /api/feedback` → stream AI feedback via SSE
-- `GET /api/attempts/<id>?session_id=...` → attempt history
+- `GET /api/questions/detail/{id}` → full question data including model answer
+- `PUT /api/questions/{id}` → update question
+- `DELETE /api/questions/{id}` → delete question
 
-The feedback endpoint deserves special attention. It:
-1. Looks up the question (including the hidden model answer).
-2. Counts the student's previous attempts to determine the attempt number.
-3. Opens an SSE stream that forwards LLM chunks as `data: {"text": "..."}` events.
-4. After streaming completes, saves the full feedback and student answer to the database.
-5. Sends a final `data: {"done": true, "attempt_number": N}` event.
+**Student API routes** (unprotected):
+- `POST /api/feedback` → stream AI feedback via SSE
+- `GET /api/attempts/{id}?session_id=...` → attempt history
 
 ### `static/app.js`
 
 A single JS file handling both the student and instructor interfaces. Key patterns:
 
-- **Session management**: `getSessionId()` creates a UUID in `localStorage` on first visit. This tracks a student's attempts without authentication.
+- **Session management**: `getSessionId()` creates a UUID in `localStorage` on first visit. This tracks a student's attempts without requiring login.
+- **Auth error handling**: `handleAuthError(res)` checks for HTTP 401 responses on instructor fetch calls and redirects to `/login` if found.
+- **Invite code**: `loadInviteCode()` and `rotateInviteCode()` manage the invite code display in the Settings section.
 - **SSE consumption**: `submitForFeedback()` uses `fetch()` with a `ReadableStream` reader to process Server-Sent Events manually (no EventSource API — this allows POST requests).
 - **Markdown rendering**: `formatFeedback()` does lightweight Markdown-to-HTML conversion (bold, headers, lists) for the streamed feedback text.
 - **History loading**: `loadAttemptHistory()` fetches past attempts from the API and renders collapsible cards.
@@ -339,6 +427,7 @@ Vanilla CSS using custom properties (CSS variables) for theming. Key layout deci
 
 - The student workspace uses `CSS Grid` with two equal columns (left: writing, right: feedback).
 - The instructor page uses the same two-column grid (left: form, right: question list).
+- Auth pages (login, register) use a centered card layout (`max-width: 420px`).
 - Mobile breakpoint at 768px collapses both layouts to single-column.
 - Feedback background uses `--bg-subtle` (#f7f7f8) to visually distinguish it from the writing area.
 - System font stack — no external fonts or CSS frameworks.
@@ -365,6 +454,8 @@ The prompt also instructs Claude to **scale specificity with attempt number**. O
 
 ## Security Model
 
+### Model answer protection
+
 The central security constraint: **the model answer must never reach the student's browser**.
 
 This is enforced at multiple layers:
@@ -375,15 +466,25 @@ This is enforced at multiple layers:
 
 3. **Server-side only**: The model answer is passed to the LLM via the Anthropic API call. It exists only in server memory during the request. The LLM's system prompt forbids it from quoting or paraphrasing the model answer.
 
-4. **Code annotations**: Security-critical lines are marked with `# SECURITY: model_answer is server-side only, never sent to client`.
+4. **Protected endpoint**: `GET /api/questions/detail/{id}` returns the full question including model answer, but requires an authenticated instructor session.
 
-**What this does NOT protect against:**
-- Anyone who knows the `/instructor` URL can see model answers (no auth yet).
-- The `/api/questions/detail/<id>` endpoint returns full question data including the model answer. It's intended for the instructor edit flow. A student who discovers this endpoint could access model answers. Phase 2 will add authentication to lock this down.
+5. **Code annotations**: Security-critical lines are marked with `# SECURITY: model_answer is server-side only, never sent to client`.
+
+### Instructor authentication
+
+- Passwords are hashed with bcrypt (via passlib). The raw password is never stored.
+- Sessions use a 64-character cryptographically random token stored in an `HttpOnly`, `SameSite=Lax` cookie. The token cannot be read by JavaScript.
+- Sessions have a 7-day sliding expiry window — each authenticated request extends the session.
+- On login, all existing sessions for the user are deleted, preventing session accumulation.
+- Invite codes are compared using `hmac.compare_digest` (constant-time) to prevent timing attacks.
+- Password length is validated server-side to 8–72 characters (bcrypt silently truncates at 72 bytes).
+- The `POST /logout` route prevents CSRF-via-GET (an `<img src="/logout">` tag cannot log out an instructor).
+
+**Note on HTTPS:** The session cookie does not set the `Secure` flag, which is intentional for local HTTP development. If you deploy this app over HTTPS, add `secure=True` to the `set_cookie` call in `app.py`'s `_set_session_cookie` helper.
 
 ## Database Schema
 
-Two tables:
+Five tables:
 
 ```sql
 CREATE TABLE questions (
@@ -391,20 +492,38 @@ CREATE TABLE questions (
     title TEXT NOT NULL,
     prompt TEXT NOT NULL,
     model_answer TEXT NOT NULL,
-    rubric TEXT,                   -- Optional, one bullet per line
+    rubric TEXT,                  -- Optional, one bullet per line
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE attempts (
-    id TEXT PRIMARY KEY,           -- UUID generated in Python
-    question_id TEXT               -- Foreign key to questions
-        REFERENCES questions(id)
-        ON DELETE CASCADE,
-    session_id TEXT NOT NULL,      -- Browser-generated UUID
+    id TEXT PRIMARY KEY,          -- UUID generated in Python
+    question_id TEXT REFERENCES questions(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,     -- Browser-generated UUID
     student_answer TEXT NOT NULL,
-    feedback TEXT,                 -- Full AI feedback text
+    feedback TEXT,
     attempt_number INTEGER NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,          -- UUID generated in Python
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,  -- bcrypt via passlib
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sessions (
+    token TEXT PRIMARY KEY,       -- 64-char hex (secrets.token_hex(32))
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMP NOT NULL -- 7-day sliding window
+);
+
+CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,         -- e.g. "invite_code"
+    value TEXT NOT NULL
 );
 ```
 
@@ -412,20 +531,37 @@ The `session_id` on attempts is how the app tracks which submissions belong to w
 
 ## API Reference
 
+### Auth
+
+| Method | Endpoint | Body | Returns | Auth required |
+|--------|----------|------|---------|---------------|
+| `POST` | `/api/auth/register` | `{username, password, invite_code}` | `{ok: true}` + cookie | No |
+| `POST` | `/api/auth/login` | `{username, password}` | `{ok: true}` + cookie | No |
+| `GET` | `/api/auth/me` | — | `{username}` | Yes |
+
+### Settings
+
+| Method | Endpoint | Body | Returns | Auth required |
+|--------|----------|------|---------|---------------|
+| `GET` | `/api/settings/invite-code` | — | `{invite_code}` | Yes |
+| `PUT` | `/api/settings/invite-code` | `{code?}` | `{invite_code}` | Yes |
+
+If `code` is omitted or empty on PUT, a random 8-character code is generated.
+
 ### Questions
 
-| Method | Endpoint | Body | Returns | Notes |
-|--------|----------|------|---------|-------|
-| `POST` | `/api/questions` | `{title, prompt, model_answer, rubric?}` | `{id}` | Create a new question |
-| `GET` | `/api/questions/detail/{id}` | — | Full question object | Instructor only — includes model_answer |
-| `PUT` | `/api/questions/{id}` | `{title?, prompt?, model_answer?, rubric?}` | `{ok: true}` | Update any fields |
-| `DELETE` | `/api/questions/{id}` | — | `{ok: true}` | Cascades to delete all attempts |
+| Method | Endpoint | Body | Returns | Auth required |
+|--------|----------|------|---------|---------------|
+| `POST` | `/api/questions` | `{title, prompt, model_answer, rubric?}` | `{id}` | Yes |
+| `GET` | `/api/questions/detail/{id}` | — | Full question object | Yes |
+| `PUT` | `/api/questions/{id}` | `{title?, prompt?, model_answer?, rubric?}` | `{ok: true}` | Yes |
+| `DELETE` | `/api/questions/{id}` | — | `{ok: true}` | Yes |
 
 ### Feedback
 
-| Method | Endpoint | Body | Returns |
-|--------|----------|------|---------|
-| `POST` | `/api/feedback` | `{question_id, student_answer, session_id}` | SSE stream |
+| Method | Endpoint | Body | Returns | Auth required |
+|--------|----------|------|---------|---------------|
+| `POST` | `/api/feedback` | `{question_id, student_answer, session_id}` | SSE stream | No |
 
 The SSE stream emits two types of events:
 - `data: {"text": "chunk of feedback"}` — one per streaming token
@@ -433,9 +569,9 @@ The SSE stream emits two types of events:
 
 ### Attempts
 
-| Method | Endpoint | Query Params | Returns |
-|--------|----------|--------------|---------|
-| `GET` | `/api/attempts/{question_id}` | `session_id` (required) | `{attempts: [...]}` |
+| Method | Endpoint | Query Params | Returns | Auth required |
+|--------|----------|--------------|---------|---------------|
+| `GET` | `/api/attempts/{question_id}` | `session_id` (required) | `{attempts: [...]}` | No |
 
 Each attempt object contains: `id`, `question_id`, `session_id`, `student_answer`, `feedback`, `attempt_number`, `created_at`.
 
@@ -447,6 +583,8 @@ The frontend is intentionally simple — no framework, no build tools, no npm.
 - Question list mode (when `questions` is set)
 - Workspace mode (when `question` is set)
 
+The instructor template receives a `username` variable from the route, used to display the logged-in user's name in the header.
+
 **JavaScript** (`static/app.js`): A single file with two sections separated by comments. `initStudent()` and `initInstructor()` are called from their respective templates. The code uses only modern browser APIs (`fetch`, `crypto.randomUUID`, `ReadableStream`).
 
 **CSS** (`static/style.css`): All styles in one file. Uses CSS custom properties for colors and spacing, CSS Grid for layout, and a single `@media` breakpoint for mobile.
@@ -455,20 +593,12 @@ The frontend is intentionally simple — no framework, no build tools, no npm.
 
 ## Extending the App
 
-The app was designed with clear extension points for future phases:
-
-### Phase 2: Authentication
-- Add a `users` table and session-based auth.
-- Protect `/instructor` behind an instructor role.
-- Lock down `/api/questions/detail` to authenticated instructors.
-- Associate attempts with authenticated user IDs instead of anonymous session IDs.
-
-### Phase 2: Per-Student Analytics
+### Per-Student Analytics
 - Add an instructor view that lists individual student sessions per question.
 - Show attempt-over-attempt improvement.
 - Allow instructors to read student answers and feedback (read-only).
 
-### Phase 2: Multiple Student Sessions
+### Multiple Student Sessions
 - Let students explicitly start a "new attempt session" for the same question.
 - Track separate revision chains.
 
@@ -502,3 +632,17 @@ The app was designed with clear extension points for future phases:
   ```bash
   sqlite3 essay_coach.db "SELECT * FROM attempts ORDER BY created_at DESC;"
   ```
+
+### Forgot the invite code
+- Retrieve it from the database:
+  ```bash
+  sqlite3 essay_coach.db "SELECT value FROM settings WHERE key='invite_code';"
+  ```
+- Or log in to the instructor dashboard — it's displayed in the Settings section.
+
+### Forgot my password
+- There is no password reset flow. An admin with database access can delete the user row and re-register:
+  ```bash
+  sqlite3 essay_coach.db "DELETE FROM users WHERE username='alice';"
+  ```
+  Then register again at `/register` with the current invite code.

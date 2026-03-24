@@ -1,5 +1,5 @@
 # dependencies.py
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Cookie, HTTPException
 
@@ -14,7 +14,7 @@ def _validate_session(session_token: str | None) -> dict | None:
     session = db.get_session(session_token)
     if not session:
         return None
-    new_expiry = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    new_expiry = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
     db.update_session_expiry(session_token, new_expiry)
     return db.get_user_by_id(session["user_id"])
 

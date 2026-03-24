@@ -6,7 +6,9 @@
       "Bash(git worktree:*)",
       "Bash(pytest tests/ -v)",
       "Bash(pytest:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(python:*)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

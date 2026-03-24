@@ -81,6 +81,9 @@ The instructor dashboard lives at `/instructor`. From here you create the essay 
 ### Creating a Question
 
 1. Navigate to `http://localhost:8000/instructor`.
+
+![Instructor dashboard](images/instructor-dashboard.png)
+
 2. On the left side, you'll see the **Create New Question** form with four fields:
 
 | Field | Required | Description |
@@ -127,6 +130,9 @@ Tips:
 Each question card in the "Existing Questions" list has two buttons:
 
 - **Edit**: Loads the question's data (including the model answer and rubric) back into the form on the left. Make your changes and click **Update Question**. Click **Cancel** to discard changes.
+
+![Instructor editing a question](images/instructor-edit.png)
+
 - **Delete**: Permanently removes the question and all associated student attempts. You'll get a confirmation dialog first.
 
 ### Viewing Analytics
@@ -143,12 +149,16 @@ Each question card shows an **attempt count** badge (e.g., "5 attempts") — the
 2. Each card shows the question title and a preview of the essay prompt.
 3. Click a question to open the writing workspace.
 
+![Student question list](images/student-question-list.png)
+
 ### Writing and Submitting Your Answer
 
 The workspace is a split-screen layout:
 
 - **Left pane**: The essay prompt at the top, and a large text area below for your answer.
 - **Right pane**: Where feedback appears after you submit.
+
+![Student workspace](images/student-workspace.png)
 
 Write or paste your answer into the text area, then click **Submit for Feedback**.
 

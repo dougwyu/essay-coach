@@ -150,19 +150,24 @@ def test_get_question_detail_without_session_returns_401(client):
     assert res.status_code == 401
 
 
+def test_get_question_detail_missing_question_returns_404(client):
+    _register(client)
+    res = client.get("/api/questions/detail/no-such-id")
+    assert res.status_code == 404
+
+
 # ---- session sliding window ----
 
 def test_session_expiry_is_renewed_on_authenticated_request(client):
     """Hitting a protected endpoint slides the 7-day expiry window."""
-    from datetime import datetime, timedelta
-    from db import create_session, get_session as db_get_session, get_user_by_username
+    from datetime import datetime, timedelta, timezone
+    from db import get_session as db_get_session, get_user_by_username, update_session_expiry
 
     _register(client)
-    # Shorten expiry to 1 hour from now
-    user = get_user_by_username("alice")
     token = client.cookies["session_token"]
-    short_expiry = (datetime.utcnow() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
-    from db import update_session_expiry
+    # Shorten expiry to 1 hour from now
+    now = datetime.now(timezone.utc)
+    short_expiry = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
     update_session_expiry(token, short_expiry)
 
     # Hit a protected endpoint
@@ -172,7 +177,7 @@ def test_session_expiry_is_renewed_on_authenticated_request(client):
     session = db_get_session(token)
     assert session is not None
     renewed = datetime.strptime(session["expires_at"], "%Y-%m-%d %H:%M:%S")
-    assert renewed > datetime.utcnow() + timedelta(days=6)
+    assert renewed > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=6)
 
 
 # ---- logout ----

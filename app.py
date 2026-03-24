@@ -1,6 +1,6 @@
 # app.py
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -52,7 +52,7 @@ def startup():
 def _new_session(user_id: str) -> str:
     """Create a DB session and return the token."""
     token = generate_token()
-    expires_at = (datetime.utcnow() + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
     create_session(token, user_id, expires_at)
     return token
 
@@ -235,7 +235,7 @@ def api_get_question_detail(
     """Instructor-only endpoint that returns full question data including model answer."""
     q = get_question(question_id)
     if not q:
-        return {"error": "Not found"}
+        raise HTTPException(status_code=404, detail="Not found")
     return q
 
 

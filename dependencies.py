@@ -1,7 +1,7 @@
 # dependencies.py
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Cookie, HTTPException
+from fastapi import Cookie, Depends, HTTPException, Path
 
 import db
 
@@ -27,3 +27,13 @@ async def require_instructor_api(
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
+
+
+async def require_class_member(
+    class_id: str = Path(...),
+    user: dict = Depends(require_instructor_api),
+) -> tuple[dict, str]:
+    """FastAPI dependency for class-scoped routes. Raises 403 if user is not a member."""
+    if not db.is_class_member(class_id, user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
+    return user, class_id

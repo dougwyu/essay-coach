@@ -233,3 +233,25 @@ def test_migration_assigns_default_class(tmp_path, monkeypatch):
     row = conn.execute("SELECT class_id FROM questions WHERE id='q1'").fetchone()
     conn.close()
     assert row[0] is not None
+
+
+# ---- GET /student/{class_id} scoped questions ----
+
+def test_student_class_page_shows_only_class_questions(client):
+    _auth_client(client)
+    res1 = client.post("/api/classes", json={"name": "ClassA"})
+    cid1 = res1.json()["class_id"]
+    res2 = client.post("/api/classes", json={"name": "ClassB"})
+    cid2 = res2.json()["class_id"]
+    client.post("/api/questions", json={
+        "title": "ClassA Q", "prompt": "P", "model_answer": "A", "rubric": "",
+        "class_id": cid1,
+    })
+    client.post("/api/questions", json={
+        "title": "ClassB Q", "prompt": "P", "model_answer": "A", "rubric": "",
+        "class_id": cid2,
+    })
+    res = client.get(f"/student/{cid1}")
+    assert res.status_code == 200
+    assert "ClassA Q" in res.text
+    assert "ClassB Q" not in res.text

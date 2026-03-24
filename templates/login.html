@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach — Sign In</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Essay Coach <span class="badge">Instructor</span></h1>
+    </header>
+    <main class="auth-layout">
+        <section class="auth-form">
+            <h2>Sign In</h2>
+            <div id="error-msg" class="error" style="display:none"></div>
+            <form id="login-form">
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required autocomplete="username">
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required autocomplete="current-password">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Sign In</button>
+                </div>
+            </form>
+            <p class="auth-link">No account? <a href="/register">Register with invite code</a></p>
+        </section>
+    </main>
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const errEl = document.getElementById('error-msg');
+            errEl.style.display = 'none';
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: document.getElementById('username').value,
+                    password: document.getElementById('password').value,
+                })
+            });
+            if (res.ok) {
+                window.location.href = '/instructor';
+            } else {
+                const data = await res.json();
+                errEl.textContent = data.detail || 'Login failed.';
+                errEl.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

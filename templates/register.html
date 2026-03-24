@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach — Create Account</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Essay Coach <span class="badge">Instructor</span></h1>
+    </header>
+    <main class="auth-layout">
+        <section class="auth-form">
+            <h2>Create Account</h2>
+            <div id="error-msg" class="error" style="display:none"></div>
+            <form id="register-form">
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required autocomplete="username">
+                </div>
+                <div class="field">
+                    <label for="password">Password <span class="optional">(8–72 characters)</span></label>
+                    <input type="password" id="password" required autocomplete="new-password" minlength="8" maxlength="72">
+                </div>
+                <div class="field">
+                    <label for="invite-code">Invite Code</label>
+                    <input type="text" id="invite-code" required autocomplete="off" placeholder="Ask your administrator">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
+            <p class="auth-link">Already have an account? <a href="/login">Sign in</a></p>
+        </section>
+    </main>
+    <script>
+        document.getElementById('register-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const errEl = document.getElementById('error-msg');
+            errEl.style.display = 'none';
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: document.getElementById('username').value,
+                    password: document.getElementById('password').value,
+                    invite_code: document.getElementById('invite-code').value,
+                })
+            });
+            if (res.ok) {
+                window.location.href = '/instructor';
+            } else {
+                const data = await res.json();
+                errEl.textContent = data.detail || 'Registration failed.';
+                errEl.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

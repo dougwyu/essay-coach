@@ -1,5 +1,7 @@
 import sqlite3
 import uuid
+import secrets
+import string
 from config import DATABASE_PATH
 
 
@@ -30,7 +32,33 @@ def init_db():
             attempt_number INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TIMESTAMP NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        DELETE FROM sessions WHERE expires_at < datetime('now');
     """)
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = 'invite_code'"
+    ).fetchone()
+    if not row:
+        alphabet = string.ascii_uppercase + string.digits
+        code = "".join(secrets.choice(alphabet) for _ in range(8))
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('invite_code', ?)", (code,)
+        )
     conn.commit()
     conn.close()
 
@@ -110,3 +138,104 @@ def get_attempt_count(question_id):
     ).fetchone()
     conn.close()
     return row["cnt"]
+
+
+# --- users ---
+
+def create_user(username: str, password_hash: str) -> str:
+    uid = str(uuid.uuid4())
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+        (uid, username, password_hash),
+    )
+    conn.commit()
+    conn.close()
+    return uid
+
+
+def get_user_by_username(username: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# --- sessions ---
+
+def create_session(token: str, user_id: str, expires_at: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+        (token, user_id, expires_at),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session(token: str) -> dict | None:
+    """Return session if it exists and has not expired; None otherwise."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')",
+        (token,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_session_expiry(token: str, expires_at: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "UPDATE sessions SET expires_at = ? WHERE token = ?",
+        (expires_at, token),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_session(token: str) -> None:
+    conn = _connect()
+    conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
+
+
+def delete_sessions_for_user(user_id: str) -> None:
+    conn = _connect()
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+# --- settings ---
+
+def get_setting(key: str) -> str | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (key,)
+    ).fetchone()
+    conn.close()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()

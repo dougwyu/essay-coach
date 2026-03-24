@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    {% if questions is not none %}
+    <!-- Question list view -->
+    <header>
+        <h1>Essay Coach</h1>
+    </header>
+    <main class="question-list-view">
+        <h2>Select a Question</h2>
+        <div class="question-grid">
+            {% for q in questions %}
+            <a href="/student/{{ q.id }}" class="question-link-card">
+                <h3>{{ q.title }}</h3>
+                <p>{{ q.prompt[:200] }}{{ '...' if q.prompt|length > 200 else '' }}</p>
+            </a>
+            {% endfor %}
+            {% if not questions %}
+            <p class="empty-state">No questions available yet. Ask your instructor to create some.</p>
+            {% endif %}
+        </div>
+    </main>
+
+    {% else %}
+    <!-- Workspace view -->
+    <header>
+        <h1>Essay Coach</h1>
+        <nav><a href="/student">&larr; All Questions</a></nav>
+    </header>
+    <main class="workspace">
+        <div class="workspace-left">
+            <div class="prompt-section">
+                <h2>{{ question.title }}</h2>
+                <div class="essay-prompt">{{ question.prompt }}</div>
+            </div>
+            <div class="answer-section">
+                <label for="student-answer">Your Answer</label>
+                <textarea id="student-answer" rows="16" placeholder="Type or paste your essay answer here..."></textarea>
+                <div class="answer-actions">
+                    <button id="submit-btn" class="btn btn-primary" onclick="submitForFeedback()">Submit for Feedback</button>
+                    <span id="attempt-counter" class="attempt-counter"></span>
+                </div>
+            </div>
+        </div>
+        <div class="workspace-right">
+            <div id="feedback-section" class="feedback-section" style="display:none">
+                <h3>Feedback</h3>
+                <div id="feedback-content" class="feedback-content"></div>
+            </div>
+            <div id="streaming-indicator" class="streaming-indicator" style="display:none">
+                <div class="dot-pulse"></div>
+                <span>Analyzing your answer...</span>
+            </div>
+        </div>
+    </main>
+
+    <aside id="history-sidebar" class="history-sidebar">
+        <button class="history-toggle" onclick="toggleHistory()">
+            <span id="history-toggle-text">Show Revision History</span>
+        </button>
+        <div id="history-content" class="history-content" style="display:none">
+        </div>
+    </aside>
+
+    <script>
+        const QUESTION_ID = "{{ question.id }}";
+    </script>
+    {% endif %}
+
+    <script src="/static/app.js"></script>
+    {% if question is not none %}
+    <script>
+        initStudent();
+    </script>
+    {% endif %}
+</body>
+</html>

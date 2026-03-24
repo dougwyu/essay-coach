@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach — Instructor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Essay Coach <span class="badge">Instructor</span></h1>
+        <nav><a href="/student">Student View</a></nav>
+    </header>
+
+    <main class="instructor-layout">
+        <section class="form-section">
+            <h2 id="form-title">Create New Question</h2>
+            <form id="question-form">
+                <input type="hidden" id="edit-id" value="">
+                <div class="field">
+                    <label for="q-title">Title</label>
+                    <input type="text" id="q-title" required placeholder="e.g. Photosynthesis Explanation">
+                </div>
+                <div class="field">
+                    <label for="q-prompt">Essay Prompt</label>
+                    <textarea id="q-prompt" rows="4" required placeholder="The question students will see..."></textarea>
+                </div>
+                <div class="field">
+                    <label for="q-model-answer">Model Answer</label>
+                    <textarea id="q-model-answer" rows="8" required placeholder="The ideal answer (hidden from students)..."></textarea>
+                </div>
+                <div class="field">
+                    <label for="q-rubric">Rubric <span class="optional">(optional, one bullet per line)</span></label>
+                    <textarea id="q-rubric" rows="4" placeholder="- Covers concept A&#10;- Explains relationship between B and C&#10;- Uses at least one example"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="submit-btn">Create Question</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-btn" style="display:none" onclick="cancelEdit()">Cancel</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="questions-section">
+            <h2>Existing Questions</h2>
+            <div id="questions-list">
+                {% for q in questions %}
+                <div class="question-card" data-id="{{ q.id }}">
+                    <div class="question-header">
+                        <h3>{{ q.title }}</h3>
+                        <span class="attempt-badge">{{ q.attempt_count }} attempt{{ 's' if q.attempt_count != 1 else '' }}</span>
+                    </div>
+                    <p class="question-prompt">{{ q.prompt[:150] }}{{ '...' if q.prompt|length > 150 else '' }}</p>
+                    <div class="question-actions">
+                        <button class="btn btn-small" onclick="editQuestion('{{ q.id }}')">Edit</button>
+                        <button class="btn btn-small btn-danger" onclick="deleteQuestion('{{ q.id }}')">Delete</button>
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not questions %}
+                <p class="empty-state">No questions yet. Create one above.</p>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+    <script>
+        initInstructor();
+    </script>
+</body>
+</html>

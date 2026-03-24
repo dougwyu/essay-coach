@@ -1,6 +1,6 @@
 # Essay Coach
 
-A local web application that helps university students iteratively improve essay answers through structured AI feedback. Instructors provide model answers that students never see; the AI compares student work against these hidden answers and returns directional feedback.
+A local web application that helps university students iteratively improve essay answers through structured AI feedback. Instructors create classes, set questions with model answers, and share a class code with students. The AI compares student work against the hidden model answers and returns directional feedback. Multiple instructors can run separate classes on a single instance.
 
 ## Setup
 
@@ -14,8 +14,8 @@ python app.py         # runs on localhost:8000
 
 ## Usage
 
-- **Instructor view** (`/instructor`): Create and manage essay questions with model answers and rubrics. Requires login — register at `/register` using the invite code printed in the terminal on first startup.
-- **Student view** (`/student`): Select a question, write an answer, and receive structured AI feedback. Revise and resubmit to improve. No login required.
+- **Instructor view** (`/instructor`): Create and manage classes and essay questions. Requires login — register at `/register` using the invite code printed in the terminal on first startup. Go to **Manage Classes** to create a class and get its student access code.
+- **Student view** (`/student`): Enter your class code, select a question, write an answer, and receive structured AI feedback. Revise and resubmit to improve. No login required.
 
 ## How Feedback Works
 

@@ -36,7 +36,7 @@ def init_db():
             prompt TEXT NOT NULL,
             model_answer TEXT NOT NULL,
             rubric TEXT,
-            class_id TEXT REFERENCES classes(id) ON DELETE CASCADE,
+            class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS attempts (

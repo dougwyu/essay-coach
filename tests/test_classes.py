@@ -88,14 +88,32 @@ def test_migration_assigns_default_class_to_existing_questions(tmp_path, monkeyp
 
 
 def test_migration_idempotent(tmp_path, monkeypatch):
-    """Calling init_db() twice does not create a second Default class."""
+    """Running init_db() twice after a migration creates exactly one Default class, not two."""
+    import sqlite3
     db_path = str(tmp_path / "idem.db")
     monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
-    init_db()
-    init_db()  # second call
 
-    import sqlite3
+    # Build old-schema DB with orphan questions (same as migration test)
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE questions (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, prompt TEXT NOT NULL,
+            model_answer TEXT NOT NULL, rubric TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TIMESTAMP NOT NULL);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO questions (id, title, prompt, model_answer) VALUES ('q1', 'Q', 'P', 'A');
+    """)
+    conn.commit()
+    conn.close()
+
+    init_db()  # first call — triggers migration, creates Default class
+    init_db()  # second call — should NOT create another Default class
+
     conn = sqlite3.connect(db_path)
     count = conn.execute("SELECT COUNT(*) FROM classes WHERE name = 'Default'").fetchone()[0]
     conn.close()
-    assert count <= 1
+    assert count == 1, f"Expected exactly 1 Default class, got {count}"

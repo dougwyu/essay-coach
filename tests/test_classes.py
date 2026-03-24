@@ -1,6 +1,19 @@
 import pytest
 import db as db_module
 from db import init_db, create_question, get_question, list_questions
+from db import (
+    create_class,
+    get_class,
+    get_class_by_student_code,
+    get_class_by_instructor_code,
+    list_classes_for_user,
+    add_class_member,
+    is_class_member,
+    get_class_question_count,
+    update_class_student_code,
+    update_class_instructor_code,
+    create_user,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -117,3 +130,85 @@ def test_migration_idempotent(tmp_path, monkeypatch):
     count = conn.execute("SELECT COUNT(*) FROM classes WHERE name = 'Default'").fetchone()[0]
     conn.close()
     assert count == 1, f"Expected exactly 1 Default class, got {count}"
+
+
+def _make_class(name="BIO101", s="STUD0001", i="INST0001", created_by=None):
+    return create_class(name, s, i, created_by)
+
+
+def test_create_class_and_get():
+    cid = _make_class()
+    c = get_class(cid)
+    assert c["name"] == "BIO101"
+    assert c["student_code"] == "STUD0001"
+    assert c["instructor_code"] == "INST0001"
+
+
+def test_get_class_returns_none_for_missing():
+    assert get_class("nonexistent") is None
+
+
+def test_get_class_by_student_code():
+    cid = _make_class()
+    c = get_class_by_student_code("STUD0001")
+    assert c["id"] == cid
+
+
+def test_get_class_by_student_code_missing():
+    assert get_class_by_student_code("XXXXXXXX") is None
+
+
+def test_get_class_by_instructor_code():
+    cid = _make_class()
+    c = get_class_by_instructor_code("INST0001")
+    assert c["id"] == cid
+
+
+def test_get_class_by_instructor_code_missing():
+    assert get_class_by_instructor_code("XXXXXXXX") is None
+
+
+def test_add_class_member_and_is_member():
+    uid = create_user("bob", "hash")
+    cid = _make_class()
+    assert not is_class_member(cid, uid)
+    add_class_member(cid, uid)
+    assert is_class_member(cid, uid)
+
+
+def test_list_classes_for_user():
+    uid = create_user("carol", "hash")
+    cid1 = create_class("Math", "STUD0002", "INST0002", uid)
+    cid2 = create_class("Sci", "STUD0003", "INST0003", uid)
+    add_class_member(cid1, uid)
+    add_class_member(cid2, uid)
+    classes = list_classes_for_user(uid)
+    ids = {c["id"] for c in classes}
+    assert cid1 in ids and cid2 in ids
+
+
+def test_list_classes_for_user_empty():
+    uid = create_user("dave", "hash")
+    assert list_classes_for_user(uid) == []
+
+
+def test_get_class_question_count():
+    cid = _make_class("Physics", "STUD0004", "INST0004")
+    assert get_class_question_count(cid) == 0
+    create_question("Q1", "P", "A", "", cid)
+    create_question("Q2", "P", "A", "", cid)
+    assert get_class_question_count(cid) == 2
+
+
+def test_update_class_student_code():
+    cid = _make_class("X", "STUD0005", "INST0005")
+    update_class_student_code(cid, "NEWSTUD1")
+    c = get_class(cid)
+    assert c["student_code"] == "NEWSTUD1"
+
+
+def test_update_class_instructor_code():
+    cid = _make_class("Y", "STUD0006", "INST0006")
+    update_class_instructor_code(cid, "NEWINST1")
+    c = get_class(cid)
+    assert c["instructor_code"] == "NEWINST1"

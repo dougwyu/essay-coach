@@ -294,3 +294,108 @@ def set_setting(key: str, value: str) -> None:
     )
     conn.commit()
     conn.close()
+
+
+# --- classes ---
+
+def create_class(name: str, student_code: str, instructor_code: str, created_by: str | None) -> str:
+    cid = str(uuid.uuid4())
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO classes (id, name, student_code, instructor_code, created_by) VALUES (?, ?, ?, ?, ?)",
+        (cid, name, student_code, instructor_code, created_by),
+    )
+    conn.commit()
+    conn.close()
+    return cid
+
+
+def get_class(class_id: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute("SELECT * FROM classes WHERE id = ?", (class_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_class_by_student_code(code: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute("SELECT * FROM classes WHERE student_code = ?", (code,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_class_by_instructor_code(code: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute("SELECT * FROM classes WHERE instructor_code = ?", (code,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_classes_for_user(user_id: str) -> list[dict]:
+    conn = _connect()
+    rows = conn.execute(
+        """SELECT c.* FROM classes c
+           JOIN class_members m ON c.id = m.class_id
+           WHERE m.user_id = ?
+           ORDER BY c.created_at ASC""",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_class_member(class_id: str, user_id: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "INSERT OR IGNORE INTO class_members (class_id, user_id) VALUES (?, ?)",
+        (class_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def is_class_member(class_id: str, user_id: str) -> bool:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT 1 FROM class_members WHERE class_id = ? AND user_id = ?",
+        (class_id, user_id),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def get_class_question_count(class_id: str) -> int:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM questions WHERE class_id = ?", (class_id,)
+    ).fetchone()
+    conn.close()
+    return row["cnt"]
+
+
+def update_class_student_code(class_id: str, new_code: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "UPDATE classes SET student_code = ? WHERE id = ?", (new_code, class_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_class_instructor_code(class_id: str, new_code: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "UPDATE classes SET instructor_code = ? WHERE id = ?", (new_code, class_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_questions_for_class(class_id: str) -> list[dict]:
+    """Return all questions belonging to a class, newest first."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM questions WHERE class_id = ? ORDER BY created_at DESC", (class_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

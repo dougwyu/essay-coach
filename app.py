@@ -33,8 +33,19 @@ from db import (
     delete_sessions_for_user,
     get_setting,
     set_setting,
+    list_questions_for_class,
+    create_class,
+    get_class,
+    get_class_by_student_code,
+    get_class_by_instructor_code,
+    list_classes_for_user,
+    add_class_member,
+    is_class_member,
+    get_class_question_count,
+    update_class_student_code,
+    update_class_instructor_code,
 )
-from dependencies import _validate_session, require_instructor_api
+from dependencies import _validate_session, require_instructor_api, require_class_member
 from feedback import generate_feedback_stream
 
 app = FastAPI()
@@ -209,6 +220,7 @@ class QuestionCreate(BaseModel):
     prompt: str
     model_answer: str
     rubric: Optional[str] = ""
+    class_id: str
 
 
 class QuestionUpdate(BaseModel):
@@ -216,14 +228,88 @@ class QuestionUpdate(BaseModel):
     prompt: Optional[str] = None
     model_answer: Optional[str] = None
     rubric: Optional[str] = None
+    class_id: Optional[str] = None
 
+
+class ClassCreate(BaseModel):
+    name: str
+
+
+class ClassJoin(BaseModel):
+    instructor_code: str
+
+
+# ---- Classes API routes ----
+
+def _unique_class_code() -> str:
+    """Generate an 8-char code guaranteed unique across all classes (student and instructor codes)."""
+    while True:
+        code = generate_invite_code()
+        if not get_class_by_student_code(code) and not get_class_by_instructor_code(code):
+            return code
+
+
+@app.post("/api/classes")
+def api_create_class(data: ClassCreate, user: dict = Depends(require_instructor_api)):
+    s_code = _unique_class_code()
+    i_code = _unique_class_code()
+    class_id = create_class(data.name, s_code, i_code, user["id"])
+    add_class_member(class_id, user["id"])
+    return {"class_id": class_id, "name": data.name, "student_code": s_code, "instructor_code": i_code}
+
+
+@app.post("/api/classes/join")
+def api_join_class(data: ClassJoin, user: dict = Depends(require_instructor_api)):
+    cls = get_class_by_instructor_code(data.instructor_code)
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if is_class_member(cls["id"], user["id"]):
+        raise HTTPException(status_code=400, detail="Already a member")
+    add_class_member(cls["id"], user["id"])
+    return {"class_id": cls["id"], "name": cls["name"]}
+
+
+@app.get("/api/classes/by-student-code/{code}")
+def api_by_student_code(code: str):
+    cls = get_class_by_student_code(code)
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    return {"class_id": cls["id"], "name": cls["name"]}
+
+
+@app.get("/api/classes/{class_id}/settings")
+def api_class_settings(user_and_class: tuple = Depends(require_class_member)):
+    user, class_id = user_and_class
+    cls = get_class(class_id)
+    return {"name": cls["name"], "student_code": cls["student_code"], "instructor_code": cls["instructor_code"]}
+
+
+@app.put("/api/classes/{class_id}/student-code")
+def api_rotate_student_code(user_and_class: tuple = Depends(require_class_member)):
+    user, class_id = user_and_class
+    new_code = _unique_class_code()
+    update_class_student_code(class_id, new_code)
+    return {"student_code": new_code}
+
+
+@app.put("/api/classes/{class_id}/instructor-code")
+def api_rotate_instructor_code(user_and_class: tuple = Depends(require_class_member)):
+    user, class_id = user_and_class
+    new_code = _unique_class_code()
+    update_class_instructor_code(class_id, new_code)
+    return {"instructor_code": new_code}
+
+
+# ---- Questions API routes (instructor-protected) ----
 
 @app.post("/api/questions")
 def api_create_question(
     data: QuestionCreate,
     user: dict = Depends(require_instructor_api),
 ):
-    qid = create_question(data.title, data.prompt, data.model_answer, data.rubric)
+    if not is_class_member(data.class_id, user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
+    qid = create_question(data.title, data.prompt, data.model_answer, data.rubric, data.class_id)
     return {"id": qid}
 
 
@@ -245,7 +331,14 @@ def api_update_question(
     data: QuestionUpdate,
     user: dict = Depends(require_instructor_api),
 ):
+    q = get_question(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not is_class_member(q["class_id"], user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
     kwargs = {k: v for k, v in data.model_dump().items() if v is not None}
+    if "class_id" in kwargs and not is_class_member(kwargs["class_id"], user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of target class")
     update_question(question_id, **kwargs)
     return {"ok": True}
 

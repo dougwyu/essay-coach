@@ -39,6 +39,12 @@ def _login(client, username="alice", password="password123"):
     })
 
 
+def _make_class(client):
+    """Create a class and return its class_id. Client must already be authenticated."""
+    res = client.post("/api/classes", json={"name": "Test Class"})
+    return res.json()["class_id"]
+
+
 # ---- register ----
 
 def test_register_happy_path(client):
@@ -130,7 +136,7 @@ def test_instructor_page_with_session_returns_200(client):
 
 def test_create_question_without_session_returns_401(client):
     res = client.post("/api/questions", json={
-        "title": "T", "prompt": "P", "model_answer": "A", "rubric": ""
+        "title": "T", "prompt": "P", "model_answer": "A", "rubric": "", "class_id": "dummy-id"
     })
     assert res.status_code == 401
 

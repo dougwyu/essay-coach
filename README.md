@@ -31,6 +31,12 @@ Feedback becomes more specific with each attempt, guiding students toward discov
 
 For a full walkthrough (user guide + developer guide), see [docs/tutorial.md](docs/tutorial.md).
 
+## License
+
+Copyright (C) 2026 Douglas Yu
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. See [LICENSE](LICENSE) for details.
+
 ## Built With
 
 This application was built entirely by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool. Claude Code generated the full stack — backend, frontend, database schema, AI feedback engine, tests, and documentation — from a single architectural prompt.

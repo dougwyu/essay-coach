@@ -164,6 +164,8 @@ Write or paste your answer into the text area, then click **Submit for Feedback*
 
 While the AI analyzes your answer, you'll see a pulsing dot with "Analyzing your answer..." The feedback streams in word-by-word in real time — you can start reading before it finishes.
 
+![Student workspace with AI feedback](images/student-feedback.png)
+
 ### Reading Your Feedback
 
 Feedback is structured into sections:

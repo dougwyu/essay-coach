@@ -257,3 +257,28 @@ def test_student_class_page_shows_only_class_questions(client):
     assert res.status_code == 200
     assert "ClassA Q" in res.text
     assert "ClassB Q" not in res.text
+
+
+def test_delete_question_non_member_class_gets_403(client):
+    _auth_client(client)
+    from db import create_class, create_question
+    other_class_id = create_class("Other", "STUD0003", "INST0003", None)
+    qid = create_question("Q1", "P", "A", "", other_class_id)
+    res = client.delete(f"/api/questions/{qid}")
+    assert res.status_code == 403
+
+
+def test_instructor_dashboard_only_shows_own_class_questions(client):
+    _auth_client(client)
+    res_class = client.post("/api/classes", json={"name": "MyClass"})
+    cid = res_class.json()["class_id"]
+    client.post("/api/questions", json={
+        "title": "My Q", "prompt": "P", "model_answer": "A", "rubric": "", "class_id": cid,
+    })
+    from db import create_class, create_question
+    other_class_id = create_class("Other", "STUD0004", "INST0004", None)
+    create_question("Other Q", "P", "A", "", other_class_id)
+    res = client.get("/instructor")
+    assert res.status_code == 200
+    assert "My Q" in res.text
+    assert "Other Q" not in res.text

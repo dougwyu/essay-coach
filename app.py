@@ -34,6 +34,7 @@ from db import (
     get_setting,
     set_setting,
     list_questions_for_class,
+    list_questions_for_user,
     create_class,
     get_class,
     get_class_by_student_code,
@@ -149,7 +150,7 @@ def instructor_dashboard(
     user = _validate_session(session_token)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
-    questions = list_questions()
+    questions = list_questions_for_user(user["id"])
     classes = list_classes_for_user(user["id"])
     for q in questions:
         q["attempt_count"] = get_attempt_count(q["id"])
@@ -379,6 +380,11 @@ def api_delete_question(
     question_id: str,
     user: dict = Depends(require_instructor_api),
 ):
+    q = get_question(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not is_class_member(q["class_id"], user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
     delete_question(question_id)
     return {"ok": True}
 

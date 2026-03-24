@@ -399,3 +399,17 @@ def list_questions_for_class(class_id: str) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def list_questions_for_user(user_id: str) -> list[dict]:
+    """Return all questions in classes this user is a member of."""
+    conn = _connect()
+    rows = conn.execute(
+        """SELECT q.* FROM questions q
+           JOIN class_members m ON q.class_id = m.class_id
+           WHERE m.user_id = ?
+           ORDER BY q.created_at ASC""",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

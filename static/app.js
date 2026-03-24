@@ -204,6 +204,17 @@ function initInstructor() {
     document.getElementById('question-form').addEventListener('submit', handleQuestionSubmit);
 }
 
+function applyClassFilter() {
+    const filterVal = document.getElementById('class-filter').value;
+    document.querySelectorAll('.question-card').forEach(card => {
+        if (!filterVal || card.dataset.classId === filterVal) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
 async function handleQuestionSubmit(e) {
     e.preventDefault();
 
@@ -212,7 +223,8 @@ async function handleQuestionSubmit(e) {
         title: document.getElementById('q-title').value,
         prompt: document.getElementById('q-prompt').value,
         model_answer: document.getElementById('q-model-answer').value,
-        rubric: document.getElementById('q-rubric').value
+        rubric: document.getElementById('q-rubric').value,
+        class_id: document.getElementById('q-class').value,
     };
 
     let res;
@@ -243,6 +255,7 @@ async function editQuestion(id) {
     document.getElementById('q-prompt').value = q.prompt;
     document.getElementById('q-model-answer').value = q.model_answer;
     document.getElementById('q-rubric').value = q.rubric || '';
+    document.getElementById('q-class').value = q.class_id || '';
     document.getElementById('form-title').textContent = 'Edit Question';
     document.getElementById('submit-btn').textContent = 'Update Question';
     document.getElementById('cancel-btn').style.display = 'inline-block';
@@ -262,4 +275,90 @@ async function deleteQuestion(id) {
     const res = await fetch(`/api/questions/${id}`, { method: 'DELETE' });
     if (handleAuthError(res)) return;
     window.location.reload();
+}
+
+// ---- Classes (instructor-classes.html) ----
+
+function initClasses() {
+    // no setup needed currently
+}
+
+async function createClass() {
+    const name = document.getElementById('new-class-name').value.trim();
+    if (!name) { alert('Enter a class name.'); return; }
+    const res = await fetch('/api/classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+    });
+    if (handleAuthError(res)) return;
+    window.location.reload();
+}
+
+async function joinClass() {
+    const code = document.getElementById('join-instructor-code').value.trim().toUpperCase();
+    if (!code) { alert('Enter an instructor code.'); return; }
+    const res = await fetch('/api/classes/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instructor_code: code }),
+    });
+    if (handleAuthError(res)) return;
+    if (res.status === 400) { alert('You are already a member of this class.'); return; }
+    if (res.status === 404) { alert('Class not found. Check the code.'); return; }
+    window.location.reload();
+}
+
+async function rotateStudentCode(classId) {
+    if (!confirm('Rotate the student code? Students using the old code will need the new one.')) return;
+    const res = await fetch(`/api/classes/${classId}/student-code`, { method: 'PUT' });
+    if (handleAuthError(res)) return;
+    if (!res.ok) return;
+    const data = await res.json();
+    document.getElementById(`student-code-${classId}`).textContent = data.student_code;
+}
+
+async function rotateInstructorCode(classId) {
+    if (!confirm('Rotate the instructor invite code? The old code will stop working.')) return;
+    const res = await fetch(`/api/classes/${classId}/instructor-code`, { method: 'PUT' });
+    if (handleAuthError(res)) return;
+    if (!res.ok) return;
+    const data = await res.json();
+    document.getElementById(`instructor-code-${classId}`).textContent = data.instructor_code;
+}
+
+// ---- Student class helpers ----
+
+// When landing on /student?clear=1 (stale class_id redirect from server), clear localStorage.
+// When a valid class_id is in localStorage, auto-redirect to /student/{class_id}.
+function initStudentLanding() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('clear')) {
+        localStorage.removeItem('essay_coach_class_id');
+        return;
+    }
+    const stored = localStorage.getItem('essay_coach_class_id');
+    if (stored) {
+        window.location.href = `/student/${stored}`;
+    }
+}
+
+async function resolveClassCode() {
+    const code = document.getElementById('class-code-input').value.trim().toUpperCase();
+    if (!code) return;
+    const errorEl = document.getElementById('class-code-error');
+    errorEl.style.display = 'none';
+    const res = await fetch(`/api/classes/by-student-code/${code}`);
+    if (!res.ok) {
+        errorEl.style.display = 'block';
+        return;
+    }
+    const data = await res.json();
+    localStorage.setItem('essay_coach_class_id', data.class_id);
+    window.location.href = `/student/${data.class_id}`;
+}
+
+function clearClass() {
+    localStorage.removeItem('essay_coach_class_id');
+    window.location.href = '/student';
 }

@@ -9,7 +9,13 @@
 <body>
     <header>
         <h1>Essay Coach <span class="badge">Instructor</span></h1>
-        <nav><a href="/student">To Student View</a></nav>
+        <nav>
+            <span class="username-display">{{ username }}</span>
+            <a href="/student">To Student View</a>
+            <form method="POST" action="/logout" style="display:inline; margin-left:0.75rem;">
+                <button type="submit" class="btn btn-small">Sign Out</button>
+            </form>
+        </nav>
     </header>
 
     <main class="instructor-layout">
@@ -63,9 +69,21 @@
         </section>
     </main>
 
+    <div class="settings-section">
+        <h2>Settings</h2>
+        <div class="field">
+            <label>Invite Code <span class="optional">(share with new instructors to allow registration)</span></label>
+            <div class="invite-code-row">
+                <code id="invite-code-display">Loading…</code>
+                <button class="btn btn-small" onclick="rotateInviteCode()">Rotate</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
     <script>
         initInstructor();
+        loadInviteCode();
     </script>
 </body>
 </html>

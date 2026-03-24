@@ -162,9 +162,11 @@ def test_rotate_instructor_code_member_gets_200(client):
     _auth_client(client)
     res_create = client.post("/api/classes", json={"name": "BIO101"})
     class_id = res_create.json()["class_id"]
+    old_code = res_create.json()["instructor_code"]
     res = client.put(f"/api/classes/{class_id}/instructor-code")
     assert res.status_code == 200
     assert "instructor_code" in res.json()
+    assert res.json()["instructor_code"] != old_code
 
 
 # ---- POST /api/questions with class_id ----

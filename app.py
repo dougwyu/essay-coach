@@ -243,10 +243,11 @@ class ClassJoin(BaseModel):
 
 def _unique_class_code() -> str:
     """Generate an 8-char code guaranteed unique across all classes (student and instructor codes)."""
-    while True:
+    for _ in range(10):
         code = generate_invite_code()
         if not get_class_by_student_code(code) and not get_class_by_instructor_code(code):
             return code
+    raise RuntimeError("Failed to generate unique class code after 10 attempts")
 
 
 @app.post("/api/classes")
@@ -261,7 +262,7 @@ def api_create_class(data: ClassCreate, user: dict = Depends(require_instructor_
 @app.post("/api/classes/join")
 def api_join_class(data: ClassJoin, user: dict = Depends(require_instructor_api)):
     cls = get_class_by_instructor_code(data.instructor_code)
-    if not cls:
+    if not cls or not compare_codes(data.instructor_code, cls["instructor_code"]):
         raise HTTPException(status_code=404, detail="Class not found")
     if is_class_member(cls["id"], user["id"]):
         raise HTTPException(status_code=400, detail="Already a member")
@@ -300,7 +301,7 @@ def api_rotate_instructor_code(user_and_class: tuple = Depends(require_class_mem
     return {"instructor_code": new_code}
 
 
-# ---- Questions API routes (instructor-protected) ----
+# ---- Questions API routes (continued) ----
 
 @app.post("/api/questions")
 def api_create_question(

@@ -292,6 +292,7 @@ async function createClass() {
         body: JSON.stringify({ name }),
     });
     if (handleAuthError(res)) return;
+    if (!res.ok) return;
     window.location.reload();
 }
 
@@ -306,6 +307,7 @@ async function joinClass() {
     if (handleAuthError(res)) return;
     if (res.status === 400) { alert('You are already a member of this class.'); return; }
     if (res.status === 404) { alert('Class not found. Check the code.'); return; }
+    if (!res.ok) return;
     window.location.reload();
 }
 
@@ -348,9 +350,12 @@ async function resolveClassCode() {
     if (!code) return;
     const errorEl = document.getElementById('class-code-error');
     errorEl.style.display = 'none';
+    const btn = document.querySelector('.class-entry-form .btn-primary');
+    if (btn) btn.disabled = true;
     const res = await fetch(`/api/classes/by-student-code/${code}`);
     if (!res.ok) {
         errorEl.style.display = 'block';
+        if (btn) btn.disabled = false;
         return;
     }
     const data = await res.json();

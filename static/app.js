@@ -165,6 +165,37 @@ function escapeHtml(text) {
 // INSTRUCTOR
 // ============================================================
 
+// ---- Auth helpers ----
+
+function handleAuthError(res) {
+    if (res.status === 401) {
+        window.location.href = '/login';
+        return true;
+    }
+    return false;
+}
+
+// ---- Invite code ----
+
+async function loadInviteCode() {
+    const res = await fetch('/api/settings/invite-code');
+    if (handleAuthError(res)) return;
+    const data = await res.json();
+    document.getElementById('invite-code-display').textContent = data.invite_code;
+}
+
+async function rotateInviteCode() {
+    if (!confirm('Rotate the invite code? The current code will stop working immediately.')) return;
+    const res = await fetch('/api/settings/invite-code', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    if (handleAuthError(res)) return;
+    const data = await res.json();
+    document.getElementById('invite-code-display').textContent = data.invite_code;
+}
+
 let currentQuestions = {};
 
 function initInstructor() {
@@ -182,55 +213,38 @@ async function handleQuestionSubmit(e) {
         rubric: document.getElementById('q-rubric').value
     };
 
+    let res;
     if (editId) {
-        await fetch(`/api/questions/${editId}`, {
+        res = await fetch(`/api/questions/${editId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
     } else {
-        await fetch('/api/questions', {
+        res = await fetch('/api/questions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
     }
-
+    if (handleAuthError(res)) return;
     window.location.reload();
 }
 
 async function editQuestion(id) {
-    const res = await fetch(`/api/questions/${id}`, { method: 'GET' });
-    // The instructor page has the data in the HTML, so we fetch via the API
-    // For simplicity, reload with a fetch to the instructor-specific endpoint
-    // Actually, we'll use a dedicated instructor API endpoint
-    // For now, use the page data approach
-
-    // Fetch question data (instructor has access to full data)
-    const response = await fetch(`/instructor`);
-    const html = await response.text();
-
-    // Simpler: just scroll to form and let user re-enter
-    // Better approach: add an instructor-only API endpoint
-    // For MVP, use the card data attributes
-
-    const card = document.querySelector(`.question-card[data-id="${id}"]`);
-    if (!card) return;
-
-    // We need the full data. Let's add a simple fetch.
     const dataRes = await fetch(`/api/questions/detail/${id}`);
-    if (dataRes.ok) {
-        const q = await dataRes.json();
-        document.getElementById('edit-id').value = id;
-        document.getElementById('q-title').value = q.title;
-        document.getElementById('q-prompt').value = q.prompt;
-        document.getElementById('q-model-answer').value = q.model_answer;
-        document.getElementById('q-rubric').value = q.rubric || '';
-        document.getElementById('form-title').textContent = 'Edit Question';
-        document.getElementById('submit-btn').textContent = 'Update Question';
-        document.getElementById('cancel-btn').style.display = 'inline-block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    if (handleAuthError(dataRes)) return;
+    if (!dataRes.ok) return;
+    const q = await dataRes.json();
+    document.getElementById('edit-id').value = id;
+    document.getElementById('q-title').value = q.title;
+    document.getElementById('q-prompt').value = q.prompt;
+    document.getElementById('q-model-answer').value = q.model_answer;
+    document.getElementById('q-rubric').value = q.rubric || '';
+    document.getElementById('form-title').textContent = 'Edit Question';
+    document.getElementById('submit-btn').textContent = 'Update Question';
+    document.getElementById('cancel-btn').style.display = 'inline-block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function cancelEdit() {
@@ -243,6 +257,7 @@ function cancelEdit() {
 
 async function deleteQuestion(id) {
     if (!confirm('Delete this question? This cannot be undone.')) return;
-    await fetch(`/api/questions/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/questions/${id}`, { method: 'DELETE' });
+    if (handleAuthError(res)) return;
     window.location.reload();
 }

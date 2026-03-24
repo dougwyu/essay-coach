@@ -8,7 +8,11 @@
       "Bash(pytest:*)",
       "Bash(pip show:*)",
       "Bash(python:*)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(git check-ignore:*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -m pytest tests/test_classes.py tests/test_classes_integration.py -q)",
+      "Bash(python3 -m pytest -q)"
     ]
   }
 }

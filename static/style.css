@@ -530,3 +530,103 @@ textarea {
     border: 1px solid var(--border);
     letter-spacing: 0.12em;
 }
+
+/* Class badge on question cards */
+.class-badge {
+    display: inline-block;
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.03em;
+    margin-right: 0.4rem;
+}
+
+/* Question meta row (class badge + attempt badge) */
+.question-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Questions section header with filter */
+.questions-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.questions-section-header h2 {
+    margin-bottom: 0;
+}
+
+/* Class filter dropdown */
+.class-filter {
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+}
+
+/* Class management page */
+.classes-page {
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 0 2rem;
+}
+
+.classes-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.class-action-form {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+}
+
+.class-action-form h2 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.class-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.class-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.class-card-header h3 {
+    font-size: 1.1rem;
+}
+
+/* Student class code entry */
+.class-entry-form {
+    max-width: 400px;
+    margin-top: 1.5rem;
+}
+
+/* Responsive: classes-actions */
+@media (max-width: 600px) {
+    .classes-actions {
+        grid-template-columns: 1fr;
+    }
+}

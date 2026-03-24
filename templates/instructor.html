@@ -11,6 +11,7 @@
         <h1>Essay Coach <span class="badge">Instructor</span></h1>
         <nav>
             <span class="username-display">{{ username }}</span>
+            <a href="/instructor/classes">Manage Classes</a>
             <a href="/student">To Student View</a>
             <form method="POST" action="/logout" style="display:inline; margin-left:0.75rem;">
                 <button type="submit" class="btn btn-small">Sign Out</button>
@@ -39,6 +40,21 @@
                     <label for="q-rubric">Rubric <span class="optional">(optional, one bullet per line)</span></label>
                     <textarea id="q-rubric" rows="4" placeholder="- Covers concept A&#10;- Explains relationship between B and C&#10;- Uses at least one example"></textarea>
                 </div>
+                <div class="field">
+                    <label for="q-class">Class</label>
+                    {% if classes %}
+                    <select id="q-class" required>
+                        <option value="" disabled selected>Select a class...</option>
+                        {% for cls in classes %}
+                        <option value="{{ cls.id }}">{{ cls.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <select id="q-class" disabled>
+                        <option value="">No classes yet — create one at Manage Classes</option>
+                    </select>
+                    {% endif %}
+                </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary" id="submit-btn">Create Question</button>
                     <button type="button" class="btn btn-secondary" id="cancel-btn" style="display:none" onclick="cancelEdit()">Cancel</button>
@@ -47,13 +63,24 @@
         </section>
 
         <section class="questions-section">
-            <h2>Existing Questions</h2>
+            <div class="questions-section-header">
+                <h2>Existing Questions</h2>
+                <select id="class-filter" class="class-filter" onchange="applyClassFilter()">
+                    <option value="">All Classes</option>
+                    {% for cls in classes %}
+                    <option value="{{ cls.id }}">{{ cls.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div id="questions-list">
                 {% for q in questions %}
-                <div class="question-card" data-id="{{ q.id }}">
+                <div class="question-card" data-id="{{ q.id }}" data-class-id="{{ q.class_id }}">
                     <div class="question-header">
                         <h3>{{ q.title }}</h3>
-                        <span class="attempt-badge">{{ q.attempt_count }} attempt{{ 's' if q.attempt_count != 1 else '' }}</span>
+                        <div class="question-meta">
+                            {% for cls in classes %}{% if cls.id == q.class_id %}<span class="class-badge">{{ cls.name }}</span>{% endif %}{% endfor %}
+                            <span class="attempt-badge">{{ q.attempt_count }} attempt{{ 's' if q.attempt_count != 1 else '' }}</span>
+                        </div>
                     </div>
                     <p class="question-prompt">{{ q.prompt[:150] }}{{ '...' if q.prompt|length > 150 else '' }}</p>
                     <div class="question-actions">
@@ -68,16 +95,6 @@
             </div>
         </section>
     </main>
-
-    <div class="classes-section">
-        <h2>Classes</h2>
-        {% for cls in classes %}
-        <p>{{ cls.name }}</p>
-        {% endfor %}
-        {% if not classes %}
-        <p class="empty-state">No classes yet.</p>
-        {% endif %}
-    </div>
 
     <div class="settings-section">
         <h2>Settings</h2>

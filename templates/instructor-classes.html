@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach — Manage Classes</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Essay Coach <span class="badge">Instructor</span></h1>
+        <nav>
+            <span class="username-display">{{ username }}</span>
+            <a href="/instructor">&larr; Dashboard</a>
+            <form method="POST" action="/logout" style="display:inline; margin-left:0.75rem;">
+                <button type="submit" class="btn btn-small">Sign Out</button>
+            </form>
+        </nav>
+    </header>
+
+    <main class="classes-page">
+        <div class="classes-actions">
+            <div class="class-action-form">
+                <h2>Create Class</h2>
+                <div class="field">
+                    <input type="text" id="new-class-name" placeholder="e.g. BIO101 Spring 2026">
+                </div>
+                <button class="btn btn-primary" onclick="createClass()">Create</button>
+            </div>
+            <div class="class-action-form">
+                <h2>Join a Class</h2>
+                <div class="field">
+                    <input type="text" id="join-instructor-code" placeholder="Instructor code">
+                </div>
+                <button class="btn btn-primary" onclick="joinClass()">Join</button>
+            </div>
+        </div>
+
+        <div id="classes-list">
+            {% for cls in classes %}
+            <div class="class-card" id="class-card-{{ cls.id }}">
+                <div class="class-card-header">
+                    <h3>{{ cls.name }}</h3>
+                    <span class="attempt-badge">{{ cls.question_count }} question{{ 's' if cls.question_count != 1 else '' }}</span>
+                </div>
+                <div class="field">
+                    <label>Student Code</label>
+                    <div class="invite-code-row">
+                        <code id="student-code-{{ cls.id }}">{{ cls.student_code }}</code>
+                        <button class="btn btn-small" onclick="rotateStudentCode('{{ cls.id }}')">Rotate</button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Instructor Invite Code</label>
+                    <div class="invite-code-row">
+                        <code id="instructor-code-{{ cls.id }}">{{ cls.instructor_code }}</code>
+                        <button class="btn btn-small" onclick="rotateInstructorCode('{{ cls.id }}')">Rotate</button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not classes %}
+            <p class="empty-state">No classes yet. Create one above.</p>
+            {% endif %}
+        </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+    <script>initClasses();</script>
+</body>
+</html>

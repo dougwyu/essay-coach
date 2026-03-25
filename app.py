@@ -26,6 +26,7 @@ from db import (
     create_attempt,
     get_attempts,
     get_attempt_count,
+    update_attempt_score,
     create_user,
     get_user_by_username,
     create_session,
@@ -47,7 +48,7 @@ from db import (
     update_class_instructor_code,
 )
 from dependencies import _validate_session, require_instructor_api, require_class_member
-from feedback import generate_feedback_stream
+from feedback import generate_feedback_stream, parse_scored_paragraphs, total_points, generate_score
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -415,6 +416,9 @@ async def api_feedback(data: FeedbackRequest):
     attempt_number = len(attempts) + 1
     previous_feedback = attempts[0]["feedback"] if attempts else None
 
+    paragraphs = parse_scored_paragraphs(question["model_answer"])
+    has_scoring = total_points(paragraphs) > 0
+
     collected_feedback = []
 
     async def event_stream():
@@ -430,7 +434,7 @@ async def api_feedback(data: FeedbackRequest):
             yield f"data: {json.dumps({'text': chunk})}\n\n"
 
         full_feedback = "".join(collected_feedback)
-        create_attempt(
+        attempt_id = create_attempt(
             data.question_id,
             data.session_id,
             data.student_answer,
@@ -438,6 +442,12 @@ async def api_feedback(data: FeedbackRequest):
             attempt_number,
         )
         yield f"data: {json.dumps({'done': True, 'attempt_number': attempt_number})}\n\n"
+
+        if has_scoring:
+            score = await generate_score(paragraphs, data.student_answer, attempt_number)
+            if score is not None:
+                update_attempt_score(attempt_id, score)
+                yield f"data: {json.dumps({'score': score})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

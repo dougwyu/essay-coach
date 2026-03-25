@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import uuid
 import secrets
@@ -104,6 +105,14 @@ def init_db():
             )
         conn.commit()
 
+    # Add score_data column to attempts if not present (migration for pre-scoring DBs)
+    attempt_cols = [
+        r[1] for r in conn.execute("PRAGMA table_info(attempts)").fetchall()
+    ]
+    if "score_data" not in attempt_cols:
+        conn.execute("ALTER TABLE attempts ADD COLUMN score_data TEXT")
+        conn.commit()
+
     # Seed invite code
     row = conn.execute(
         "SELECT value FROM settings WHERE key = 'invite_code'"
@@ -164,16 +173,29 @@ def delete_question(question_id):
     conn.close()
 
 
-def create_attempt(question_id, session_id, student_answer, feedback, attempt_number):
+def create_attempt(question_id, session_id, student_answer, feedback, attempt_number, score_data=None):
     aid = str(uuid.uuid4())
+    score_json = json.dumps(score_data) if score_data is not None else None
     conn = _connect()
     conn.execute(
-        "INSERT INTO attempts (id, question_id, session_id, student_answer, feedback, attempt_number) VALUES (?, ?, ?, ?, ?, ?)",
-        (aid, question_id, session_id, student_answer, feedback, attempt_number),
+        "INSERT INTO attempts (id, question_id, session_id, student_answer, feedback, attempt_number, score_data)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (aid, question_id, session_id, student_answer, feedback, attempt_number, score_json),
     )
     conn.commit()
     conn.close()
     return aid
+
+
+def update_attempt_score(attempt_id: str, score_data: dict) -> None:
+    score_json = json.dumps(score_data)
+    conn = _connect()
+    conn.execute(
+        "UPDATE attempts SET score_data = ? WHERE id = ?",
+        (score_json, attempt_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_attempts(question_id, session_id):
@@ -183,7 +205,13 @@ def get_attempts(question_id, session_id):
         (question_id, session_id),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("score_data"):
+            d["score_data"] = json.loads(d["score_data"])
+        result.append(d)
+    return result
 
 
 def get_attempt_count(question_id):

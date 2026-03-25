@@ -17,6 +17,7 @@ A complete guide to using and understanding Essay Coach — the local web app th
   - [Writing an Effective Rubric](#writing-an-effective-rubric)
   - [Editing and Deleting Questions](#editing-and-deleting-questions)
   - [Viewing Analytics](#viewing-analytics)
+    - [Exporting Data](#exporting-data)
   - [Managing the Invite Code](#managing-the-invite-code)
   - [Signing Out](#signing-out)
 - [For Students](#for-students)
@@ -44,6 +45,7 @@ A complete guide to using and understanding Essay Coach — the local web app th
 - [Phase 3 — Classes](#phase-3--classes)
 - [Phase 4 — Quantitative Scoring](#phase-4--quantitative-scoring)
 - [Phase 5 — Per-Student Analytics](#phase-5--per-student-analytics)
+- [Phase 6 — Analytics Export](#phase-6--analytics-export)
 
 ---
 
@@ -241,6 +243,15 @@ Each row shows:
 
 Click **▶ Show answers** on any row to expand an inline panel showing each attempt's answer text. The AI's qualitative feedback is shown below the final attempt's answer.
 
+#### Exporting Data
+
+Both analytics pages have **Download** links in the top-right corner of the header (visible only when data exists). Click **CSV** or **JSON** to download:
+
+- **Class analytics page** — one row per student session across all questions, with columns: `question_title`, `session_id`, `attempt_count`, `final_score`, `max_score`.
+- **Question detail page** — one row per attempt, with columns: `session_id`, `attempt_number`, `student_answer`, `feedback`, `score_awarded`, `max_score`.
+
+Unscored questions have empty cells for score columns rather than null values, so the files open cleanly in Excel or Google Sheets without mixed-type columns.
+
 ### Managing the Invite Code
 
 The Settings section at the bottom of the instructor dashboard shows the current **instructor registration invite code**. This is separate from per-class codes — it gates who can create an instructor account in the first place.
@@ -369,6 +380,7 @@ essay-coach/
 ├── dependencies.py            # FastAPI auth dependencies
 ├── feedback.py                # LLM prompt construction and streaming API call
 ├── db.py                      # SQLite schema, connection, and query functions
+├── export_utils.py            # CSV/JSON formatting helpers for analytics export
 ├── config.py                  # Environment variables and settings
 ├── static/
 │   ├── style.css              # All styles (CSS custom properties, responsive grid)
@@ -811,7 +823,6 @@ The instructor template receives `questions` (filtered to the instructor's class
 - Track separate revision chains.
 
 ### Other Ideas
-- **Export**: Download attempt history as CSV or PDF.
 - **File upload**: Accept essay uploads (`.txt`, `.docx`) in addition to paste.
 - **Custom LLM settings**: Let instructors adjust feedback tone, max tokens, or model.
 - **Plagiarism detection**: Compare submissions across students.
@@ -977,3 +988,21 @@ The fifth phase added read-only analytics pages for instructors, surfacing per-s
 - *Empty IN() guard.* `get_class_question_stats` returns `[]` immediately when a class has no questions. SQLite raises a syntax error on `WHERE question_id IN ()` with an empty list.
 - *Score progression preserves None.* Unscored attempts produce `None` entries in `score_progression` rather than being omitted, so the list length always equals `attempt_count` and the template can join all entries uniformly.
 - *Dedicated analytics pages.* Rather than a modal or inline expansion on the dashboard, analytics get their own bookmarkable URLs, following the same pattern as `/instructor/classes`.
+
+## Phase 6 — Analytics Export
+
+The sixth phase added CSV and JSON download links to both analytics pages, letting instructors pull session data into spreadsheets for offline analysis.
+
+**What was built:**
+- `export_utils.py`: pure-Python formatting module with `format_question_export(sessions, fmt)` and `format_class_export(session_rows, fmt)`, both returning `(content, media_type)`. No FastAPI imports — trivially unit-testable in isolation.
+- Two new export routes in `app.py`: `GET /instructor/analytics/{question_id}/export` and `GET /instructor/classes/{class_id}/analytics/export`. Both accept a `format` query parameter (`csv` default, `json` optional); unknown values silently fall back to CSV.
+- `_make_export_response(content, media_type, basename)` helper in `app.py`: derives the file extension from `media_type` and sets `Content-Disposition: attachment` to trigger a browser download.
+- Export link pairs (**CSV** and **JSON**) added to both analytics templates, right-aligned in the header using `margin-left: auto` in a flex row. Hidden when no data exists.
+- `tests/test_export_utils.py`: 15 unit tests for the formatting module.
+- 14 new integration tests appended to `tests/test_analytics_integration.py`.
+
+**Key design decisions made in Phase 6:**
+- *`export_utils.py` is FastAPI-free.* Keeping all formatting logic in a plain Python module makes it trivially unit-testable without spinning up the FastAPI app or a database.
+- *Empty string instead of null for unscored fields.* Both CSV and JSON output use `""` for missing scores so spreadsheet tools don't encounter mixed-type columns.
+- *Extension derived from media_type.* The `_make_export_response` helper reads the actual `media_type` returned by the formatter to set the filename extension, eliminating any possibility of a mismatch between file contents and filename.
+- *Silent CSV fallback.* Unknown `format` values produce CSV output without raising a 400, keeping the API forgiving for future format additions.

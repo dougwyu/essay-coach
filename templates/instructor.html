@@ -71,6 +71,11 @@
                     <option value="{{ cls.id }}">{{ cls.name }}</option>
                     {% endfor %}
                 </select>
+                <div class="analytics-class-links">
+                    {% for cls in classes %}
+                    <a href="/instructor/classes/{{ cls.id }}/analytics" class="analytics-class-link">{{ cls.name }}</a>
+                    {% endfor %}
+                </div>
             </div>
             <div id="questions-list">
                 {% for q in questions %}
@@ -86,6 +91,7 @@
                     <div class="question-actions">
                         <button class="btn btn-small" onclick="editQuestion('{{ q.id }}')">Edit</button>
                         <button class="btn btn-small btn-danger" onclick="deleteQuestion('{{ q.id }}')">Delete</button>
+                        <a href="/instructor/analytics/{{ q.id }}" class="btn btn-small">Analytics</a>
                     </div>
                 </div>
                 {% endfor %}

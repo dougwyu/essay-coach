@@ -679,11 +679,29 @@ textarea {
 
 .analytics-header {
     margin-bottom: 1.5rem;
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
 }
 
 .analytics-header h2 {
     margin: 0.25rem 0 0;
     font-size: 1.4rem;
+}
+
+.export-links {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.export-links a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.export-links a:hover {
+    text-decoration: underline;
 }
 
 .breadcrumb {

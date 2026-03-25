@@ -22,6 +22,14 @@
         <div class="analytics-header">
             <a href="/instructor/classes/{{ class_id }}/analytics" class="breadcrumb">&larr; Back to Class Analytics</a>
             <h2>{{ question.title }} — Session Detail</h2>
+            {% if sessions %}
+            <div class="export-links">
+              Download:
+              <a href="/instructor/analytics/{{ question.id }}/export?format=csv">CSV</a>
+              &middot;
+              <a href="/instructor/analytics/{{ question.id }}/export?format=json">JSON</a>
+            </div>
+            {% endif %}
         </div>
 
         <div class="analytics-tiles">

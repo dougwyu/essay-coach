@@ -91,6 +91,7 @@ Returns one dict per session, sorted by `attempt_count` descending (most attempt
         {
             "attempt_number": int,
             "student_answer": str,
+            "feedback": str | None,          # LLM qualitative feedback; included for all attempts, displayed only for the final one
             "score_data": dict | None,       # deserialized; None if not scored
         }
     ]
@@ -141,7 +142,7 @@ Context from server: `question` (id, title, prompt), `class_id`, `sessions`.
   - Session: truncated UUID (`{first4}…{last4}`)
   - Score progression: `total_awarded` values joined with `→`, final value bolded. "—" if unscored.
   - Final score: color-coded per bucketing thresholds above. "—" if unscored.
-  - Toggle: "▶ Show answers" / "▼ Hide answers" — expands an inline row showing each attempt's answer text and attempt number
+  - Toggle: "▶ Show answers" / "▼ Hide answers" — expands an inline row showing each attempt's answer text (labelled "Attempt N"). Under the final attempt's answer, the LLM's qualitative feedback is shown in full.
 - Sorted by `attempt_count` descending
 
 "Show answers" toggle: small inline `<script>` in the template, no changes to `app.js`.

@@ -290,3 +290,176 @@ def test_question_analytics_200_for_member(client):
     qid = _make_question_via_api(client, cid)
     res = client.get(f"/instructor/analytics/{qid}")
     assert res.status_code == 200
+
+# ── Export route integration tests ──────────────────────────────────────
+
+
+# ── Per-question export ──────────────────────────────────────────────────
+
+def test_question_export_unauthenticated(client):
+    r = client.get("/instructor/analytics/fake-id/export", follow_redirects=False)
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_question_export_not_found(client):
+    _register_and_login(client)
+    r = client.get("/instructor/analytics/no-such-id/export")
+    assert r.status_code == 404
+
+
+def test_question_export_not_member(client):
+    _register_and_login(client, "alice")
+    bob_id = create_user("bob_exp1", hash_password("password123"))
+    cid = create_class("Bob class", "SBOBEXP1", "IBOBEXP1", bob_id)
+    add_class_member(cid, bob_id)
+    qid = create_question("Q", "P", "A", None, cid)
+    r = client.get(f"/instructor/analytics/{qid}/export")
+    assert r.status_code == 403
+
+
+def test_question_export_csv_happy_path(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    qid = _make_question_via_api(client, cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1, score_data={"total_awarded": 5, "total_max": 10})
+    _make_attempt(qid, sid, 2, score_data={"total_awarded": 8, "total_max": 10})
+
+    r = client.get(f"/instructor/analytics/{qid}/export?format=csv")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    assert "question-" in r.headers["content-disposition"]
+    lines = r.text.strip().splitlines()
+    assert len(lines) == 3  # header + 2 rows
+    assert "5" in lines[1]
+    assert "8" in lines[2]
+
+
+def test_question_export_json_happy_path(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    qid = _make_question_via_api(client, cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1, score_data={"total_awarded": 5, "total_max": 10})
+    _make_attempt(qid, sid, 2, score_data={"total_awarded": 8, "total_max": 10})
+
+    r = client.get(f"/instructor/analytics/{qid}/export?format=json")
+    assert r.status_code == 200
+    assert "application/json" in r.headers["content-type"]
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) == 2
+    keys = {"session_id", "attempt_number", "student_answer", "feedback", "score_awarded", "max_score"}
+    assert set(data[0].keys()) == keys
+    assert data[0]["score_awarded"] == 5
+    assert data[0]["max_score"] == 10
+    assert data[1]["score_awarded"] == 8
+    assert data[1]["max_score"] == 10
+
+
+def test_question_export_no_attempts(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    qid = _make_question_via_api(client, cid)
+
+    r_csv = client.get(f"/instructor/analytics/{qid}/export?format=csv")
+    assert r_csv.status_code == 200
+    assert len(r_csv.text.strip().splitlines()) == 1  # header only
+
+    r_json = client.get(f"/instructor/analytics/{qid}/export?format=json")
+    assert r_json.json() == []
+
+
+def test_question_export_unscored(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    qid = _make_question_via_api(client, cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1)  # no score_data
+
+    r_csv = client.get(f"/instructor/analytics/{qid}/export?format=csv")
+    import csv as _csv, io
+    rows = list(_csv.DictReader(io.StringIO(r_csv.text)))
+    assert rows[0]["score_awarded"] == ""
+    assert rows[0]["max_score"] == ""
+
+    r_json = client.get(f"/instructor/analytics/{qid}/export?format=json")
+    row = r_json.json()[0]
+    assert row["score_awarded"] == ""
+    assert row["max_score"] == ""
+
+
+# ── Per-class export ─────────────────────────────────────────────────────
+
+def test_class_export_unauthenticated(client):
+    r = client.get("/instructor/classes/fake-id/analytics/export", follow_redirects=False)
+    assert r.status_code == 302
+    assert "/login" in r.headers["location"]
+
+
+def test_class_export_not_found(client):
+    _register_and_login(client)
+    r = client.get("/instructor/classes/no-such-id/analytics/export")
+    assert r.status_code == 404
+
+
+def test_class_export_not_member(client):
+    _register_and_login(client, "alice")
+    bob_id = create_user("bob_exp2", hash_password("password123"))
+    cid = create_class("Bob class2", "SBOBEXP2", "IBOBEXP2", bob_id)
+    add_class_member(cid, bob_id)
+    r = client.get(f"/instructor/classes/{cid}/analytics/export")
+    assert r.status_code == 403
+
+
+def test_class_export_csv_happy_path(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    q1id = create_question("Question One", "P1", "A1", None, cid)
+    q2id = create_question("Question Two", "P2", "A2", None, cid)
+    _make_attempt(q1id, str(uuid.uuid4()), 1, score_data={"total_awarded": 5, "total_max": 10})
+    _make_attempt(q2id, str(uuid.uuid4()), 1, score_data={"total_awarded": 7, "total_max": 10})
+
+    r = client.get(f"/instructor/classes/{cid}/analytics/export?format=csv")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    assert "class-" in r.headers["content-disposition"]
+    lines = r.text.strip().splitlines()
+    assert len(lines) == 3  # header + 2 rows
+    assert "Question One" in r.text
+    assert "Question Two" in r.text
+
+
+def test_class_export_json_happy_path(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    q1id = create_question("Question One", "P1", "A1", None, cid)
+    q2id = create_question("Question Two", "P2", "A2", None, cid)
+    _make_attempt(q1id, str(uuid.uuid4()), 1, score_data={"total_awarded": 5, "total_max": 10})
+    _make_attempt(q2id, str(uuid.uuid4()), 1, score_data={"total_awarded": 7, "total_max": 10})
+
+    r = client.get(f"/instructor/classes/{cid}/analytics/export?format=json")
+    assert r.status_code == 200
+    assert "application/json" in r.headers["content-type"]
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) == 2
+    keys = {"question_title", "session_id", "attempt_count", "final_score", "max_score"}
+    assert set(data[0].keys()) == keys
+    titles = {row["question_title"] for row in data}
+    assert titles == {"Question One", "Question Two"}
+    for row in data:
+        assert row["attempt_count"] == 1
+
+
+def test_class_export_no_questions(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+
+    r_csv = client.get(f"/instructor/classes/{cid}/analytics/export?format=csv")
+    assert r_csv.status_code == 200
+    assert len(r_csv.text.strip().splitlines()) == 1  # header only
+
+    r_json = client.get(f"/instructor/classes/{cid}/analytics/export?format=json")
+    assert r_json.json() == []

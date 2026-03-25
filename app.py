@@ -2,7 +2,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -50,6 +50,7 @@ from db import (
     update_class_instructor_code,
 )
 from dependencies import _validate_session, require_instructor_api, require_class_member
+from export_utils import format_question_export, format_class_export
 from feedback import generate_feedback_stream, parse_scored_paragraphs, total_points, generate_score
 
 app = FastAPI()
@@ -244,6 +245,67 @@ def instructor_question_analytics(
             "username": user["username"],
         },
     )
+
+
+def _make_export_response(content: str, media_type: str, filename: str):
+    from fastapi.responses import Response
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/instructor/analytics/{question_id}/export")
+async def export_question(
+    question_id: str,
+    format: str = Query(default="csv"),
+    session_token: str | None = Cookie(default=None),
+):
+    user = _validate_session(session_token)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    q = get_question(question_id)
+    if not q:
+        raise HTTPException(status_code=404)
+    if not is_class_member(q["class_id"], user["id"]):
+        raise HTTPException(status_code=403)
+    sessions = get_question_session_stats(question_id)
+    content, media_type = format_question_export(sessions, format)
+    filename = f"question-{question_id[:8]}.{'json' if format == 'json' else 'csv'}"
+    return _make_export_response(content, media_type, filename)
+
+
+@app.get("/instructor/classes/{class_id}/analytics/export")
+async def export_class(
+    class_id: str,
+    format: str = Query(default="csv"),
+    session_token: str | None = Cookie(default=None),
+):
+    user = _validate_session(session_token)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    cls = get_class(class_id)
+    if not cls:
+        raise HTTPException(status_code=404)
+    if not is_class_member(class_id, user["id"]):
+        raise HTTPException(status_code=403)
+    q_stats = get_class_question_stats(class_id)
+    session_rows = []
+    for q in q_stats:
+        for s in get_question_session_stats(q["question_id"]):
+            session_rows.append(
+                {
+                    "question_title": q["title"],
+                    "session_id": s["session_id"],
+                    "attempt_count": s["attempt_count"],
+                    "final_score": s["final_score"] if s["final_score"] is not None else "",
+                    "max_score": s["max_total"] if s["max_total"] is not None else "",
+                }
+            )
+    content, media_type = format_class_export(session_rows, format)
+    filename = f"class-{class_id[:8]}.{'json' if format == 'json' else 'csv'}"
+    return _make_export_response(content, media_type, filename)
 
 
 # ---- Auth API routes ----

@@ -42,6 +42,7 @@ A complete guide to using and understanding Essay Coach — the local web app th
 - [Phase 1 — Core App](#phase-1--core-app)
 - [Phase 2 — Instructor Authentication](#phase-2--instructor-authentication)
 - [Phase 3 — Classes](#phase-3--classes)
+- [Phase 4 — Quantitative Scoring](#phase-4--quantitative-scoring)
 
 ---
 
@@ -160,6 +161,24 @@ The model answer is the most important field. It directly shapes the quality of 
 
 > Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It occurs in two stages: light-dependent reactions in the thylakoid membranes and the Calvin cycle in the stroma. In the light reactions, water is split, oxygen is released, and ATP and NADPH are produced. The Calvin cycle uses CO2, ATP, and NADPH to synthesize glucose through carbon fixation. Chlorophyll absorbs light primarily in the blue and red wavelengths, reflecting green. Photosynthesis is fundamental to life as it produces oxygen and is the basis for most food chains and aerobic life.
 
+#### Adding Point Values for Quantitative Scoring (optional)
+
+You can optionally assign point values to paragraphs in your model answer by appending `[N]` (where N is a positive integer) at the end of a paragraph. When present, students receive a numeric score after each submission.
+
+**Example with scoring:**
+
+```
+Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It occurs in two stages: light-dependent reactions in the thylakoid membranes and the Calvin cycle in the stroma. [3]
+
+In the light reactions, water is split, oxygen is released, and ATP and NADPH are produced. The Calvin cycle uses CO2, ATP, and NADPH to synthesize glucose through carbon fixation. [4]
+
+Chlorophyll absorbs light primarily in the blue and red wavelengths, reflecting green. Photosynthesis is fundamental to life as it produces oxygen and is the basis for most food chains and aerobic life. [3]
+```
+
+This assigns 3, 4, and 3 points to the three paragraphs (10 total). After each submission, students see a score breakdown — how many points they earned per section and their total out of 10.
+
+You can mix scored and unscored paragraphs. Paragraphs without a `[N]` marker are used for qualitative feedback only. If no paragraphs have point values, no score is shown.
+
 ### Writing an Effective Rubric
 
 The rubric is optional but recommended. It tells the AI which aspects of the answer matter most. Format it as one bullet point per line:
@@ -260,7 +279,16 @@ Feedback is structured into sections:
 | **Accuracy** | Any factual errors or misconceptions the AI detected. |
 | **Progress** | (Attempt 2 and later) What improved since your last attempt and what still needs work. |
 
-The AI **never** gives you a grade or numeric score. It uses qualitative language only. It also **never** reveals the instructor's model answer — it's designed to guide you toward discovering the shape of a good answer through your own thinking.
+The AI **never** reveals the instructor's model answer — it's designed to guide you toward discovering the shape of a good answer through your own thinking.
+
+#### Score (optional)
+
+If the instructor added point values to their model answer, a score table appears below the feedback after each submission. It shows:
+
+- Each scored section with points earned out of the section total
+- Your overall total (e.g., **7 / 10**)
+
+Scores are stored with each attempt and visible in your revision history.
 
 ### Revising Your Answer
 
@@ -281,6 +309,7 @@ Below the workspace, there's a **Show Revision History** toggle. Click it to exp
 
 - Your submitted answer text
 - The feedback you received
+- Your score for that attempt (if the question uses point-value scoring)
 
 Click any attempt's header to expand or collapse it. This helps you track your progress and see how your answer has evolved across revisions.
 
@@ -385,8 +414,9 @@ Functions — questions and attempts:
 | `list_questions_for_user(user_id)` | Returns all questions in classes the user is a member of. |
 | `update_question(id, **kwargs)` | Updates only the fields you pass, including optionally `class_id`. |
 | `delete_question(id)` | Deletes a question and cascades to its attempts. |
-| `create_attempt(...)` | Records a student submission and its feedback. |
-| `get_attempts(question_id, session_id)` | Returns a student's attempts, newest first. |
+| `create_attempt(...)` | Records a student submission and its feedback. Accepts an optional `score_data` dict, serialized to JSON. |
+| `update_attempt_score(attempt_id, score_data)` | Updates the `score_data` column for an attempt after scoring completes. |
+| `get_attempts(question_id, session_id)` | Returns a student's attempts, newest first. Deserializes `score_data` from JSON. |
 | `get_attempt_count(question_id)` | Total submissions across all students. |
 
 Functions — classes:
@@ -421,17 +451,21 @@ Functions — auth:
 
 #### Migration
 
-`init_db()` handles existing databases created before Phase 3:
+`init_db()` handles existing databases from earlier phases:
 
+**Phase 3 migration** (pre-classes databases):
 1. If `questions` has no `class_id` column, `ALTER TABLE` adds one (nullable, because SQLite cannot add a NOT NULL column without a default).
 2. If orphaned questions exist (no `class_id`), a "Default" class is created with auto-generated codes and the first user in the database is added as its member.
 3. All orphaned questions are assigned to the Default class.
 
-The migration is idempotent — it only fires when orphaned questions exist.
+**Phase 4 migration** (pre-scoring databases):
+1. If `attempts` has no `score_data` column, `ALTER TABLE` adds it as a nullable `TEXT` column.
+
+Both migrations are idempotent — they only run when the target column is absent.
 
 ### `feedback.py`
 
-The core of the app. Two functions:
+The core of the app. Key functions:
 
 **`build_messages(...)`** constructs the user message sent to Claude. The model answer and rubric are embedded in XML-delimited blocks that the LLM can reference:
 
@@ -444,11 +478,17 @@ The core of the app. Two functions:
 
 **`generate_feedback_stream(...)`** creates an async Anthropic client and streams the response. It yields text chunks as they arrive, which the API endpoint forwards to the browser via SSE.
 
-The system prompt is embedded as a constant at the top of the file. It instructs the LLM to:
+The feedback system prompt is embedded as a constant at the top of the file. It instructs the LLM to:
 1. Never reveal the model answer's content directly.
 2. Structure feedback into Coverage, Depth, Structure, Accuracy, and Progress sections.
 3. Scale specificity with attempt number (broad early, targeted later).
-4. Use qualitative language only — no grades or scores.
+4. Acknowledge any scoring markers in the model answer without reproducing their values.
+
+**`parse_scored_paragraphs(model_answer)`** splits the model answer on blank lines and extracts any trailing `[N]` point markers (N ≥ 1) using a regex. Returns a list of dicts with `text` and `points` (or `None` for unscored paragraphs).
+
+**`total_points(paragraphs)`** sums the point values of all scored paragraphs.
+
+**`generate_score(paragraphs, student_answer, attempt_number)`** makes a second, non-streaming Anthropic API call after the qualitative feedback stream completes. It sends only the scored paragraphs and the student answer to a strict examiner persona (`SCORING_SYSTEM_PROMPT`) that returns a JSON array of `{paragraph_index, points_awarded, max_points}` objects. Returns `None` on failure (invalid JSON, schema mismatch, out-of-range values) so scoring failures never interrupt the student experience.
 
 ### `app.py`
 
@@ -489,7 +529,7 @@ The FastAPI application. Routes are organized into groups:
 - `DELETE /api/questions/{id}` → delete question; validates membership
 
 **Student API routes** (unprotected):
-- `POST /api/feedback` → stream AI feedback via SSE
+- `POST /api/feedback` → stream AI feedback via SSE; after the `done` event, an optional `score` event is emitted if the question has point-value scoring
 - `GET /api/attempts/{id}?session_id=...` → attempt history
 
 ### `static/app.js`
@@ -504,7 +544,8 @@ A single JS file handling both the student and instructor interfaces. Key patter
 - **Student class flow**: `resolveClassCode()` calls the student-code lookup endpoint, stores the class_id, and redirects. `clearClass()` wipes the stored class and returns to the landing page.
 - **SSE consumption**: `submitForFeedback()` uses `fetch()` with a `ReadableStream` reader to process Server-Sent Events manually (no EventSource API — this allows POST requests).
 - **Markdown rendering**: `formatFeedback()` does lightweight Markdown-to-HTML conversion (bold, headers, lists) for the streamed feedback text.
-- **History loading**: `loadAttemptHistory()` fetches past attempts from the API and renders collapsible cards.
+- **Score rendering**: `renderScore(scoreData, container)` builds the score table HTML from the score event payload. Called with `null` container for the live workspace (uses `getElementById`), or with a specific element for history cards.
+- **History loading**: `loadAttemptHistory()` fetches past attempts from the API and renders collapsible cards, including score tables for any attempts that have score data.
 
 ### `static/style.css`
 
@@ -517,6 +558,7 @@ Vanilla CSS using custom properties (CSS variables) for theming. Key layout deci
 - Mobile breakpoint at 768px collapses both layouts to single-column.
 - Feedback background uses `--bg-subtle` (#f7f7f8) to visually distinguish it from the writing area.
 - Class badges (`.class-badge`) use a blue pill style (`#dbeafe` background, `#1d4ed8` text).
+- Score section (`.score-section`, `.score-total`, `.score-breakdown`, `.score-label`, `.score-fraction`) styles the score table shown below feedback.
 - System font stack — no external fonts or CSS frameworks.
 
 ## The Feedback Engine
@@ -527,12 +569,17 @@ This is how a student submission turns into feedback:
 Student clicks "Submit"
     → Browser POSTs to /api/feedback
         → Server looks up question (model_answer, rubric)
+        → Server parses model answer for [N] point markers
         → Server calls build_messages() to construct the prompt
         → Server opens streaming connection to Anthropic API
         → Each text chunk is forwarded to browser via SSE
         → Browser renders chunks in real-time
         → When stream ends, server saves attempt to SQLite
         → Browser receives "done" event, reloads history
+        → If question has point markers, server calls generate_score()
+            → Non-streaming LLM call returns JSON score data
+            → Server stores score on the attempt row
+            → Browser receives "score" event, renders score table
 ```
 
 The system prompt is critical. It tells Claude to act as an essay coach with strict rules about never revealing the model answer. The key constraint is **directional feedback**: instead of saying "you should mention X," the AI says "consider whether your discussion of X is complete."
@@ -617,6 +664,7 @@ CREATE TABLE attempts (
     student_answer TEXT NOT NULL,
     feedback TEXT,
     attempt_number INTEGER NOT NULL,
+    score_data TEXT,                  -- JSON: {total, max_total, breakdown:[{text,awarded,max}]}; NULL if no scoring
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -692,9 +740,10 @@ Error codes: 404 if code not found, 400 if already a member.
 |--------|----------|------|---------|---------------|
 | `POST` | `/api/feedback` | `{question_id, student_answer, session_id}` | SSE stream | No |
 
-The SSE stream emits two types of events:
+The SSE stream emits three types of events:
 - `data: {"text": "chunk of feedback"}` — one per streaming token
-- `data: {"done": true, "attempt_number": 3}` — signals completion
+- `data: {"done": true, "attempt_number": 3}` — signals feedback completion
+- `data: {"score": {...}}` — optional; emitted after `done` if the question has point-value scoring. Payload: `{total, max_total, breakdown: [{text, awarded, max}, ...]}`
 
 ### Attempts
 
@@ -702,7 +751,7 @@ The SSE stream emits two types of events:
 |--------|----------|--------------|---------|---------------|
 | `GET` | `/api/attempts/{question_id}` | `session_id` (required) | `{attempts: [...]}` | No |
 
-Each attempt object contains: `id`, `question_id`, `session_id`, `student_answer`, `feedback`, `attempt_number`, `created_at`.
+Each attempt object contains: `id`, `question_id`, `session_id`, `student_answer`, `feedback`, `attempt_number`, `created_at`, `score_data` (object or `null`).
 
 ## Frontend Architecture
 
@@ -737,7 +786,6 @@ The instructor template receives `questions` (filtered to the instructor's class
 - **File upload**: Accept essay uploads (`.txt`, `.docx`) in addition to paste.
 - **Custom LLM settings**: Let instructors adjust feedback tone, max tokens, or model.
 - **Plagiarism detection**: Compare submissions across students.
-- **Rubric scoring**: Optional numeric rubric scoring alongside qualitative feedback.
 - **Student accounts**: Optional login for students to preserve history across browsers.
 
 ---
@@ -785,7 +833,7 @@ The instructor template receives `questions` (filtered to the instructor's class
 
 # Part 3: Development History
 
-Essay Coach was built entirely by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool, across three development phases. Each phase started with a design spec, produced an implementation plan, and was executed task-by-task using the subagent-driven development workflow: a fresh Claude subagent per task, two-stage review (spec compliance, then code quality) after each, and a final review across the whole implementation before merging.
+Essay Coach was built entirely by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool, across four development phases. Each phase started with a design spec, produced an implementation plan, and was executed task-by-task using the subagent-driven development workflow: a fresh Claude subagent per task, two-stage review (spec compliance, then code quality) after each, and a final review across the whole implementation before merging.
 
 ## Phase 1 — Core App
 
@@ -853,3 +901,28 @@ The third phase introduced a multi-class layer so multiple instructors can run i
 - *Migration is idempotent.* `init_db()` can safely run on every startup. The Default class migration only fires when orphaned questions exist, ensuring a second run doesn't create a second Default class.
 - *SQLite NOT NULL limitation.* SQLite cannot add a NOT NULL column via `ALTER TABLE` without a default. The migration adds `class_id` as nullable via `ALTER TABLE`, then immediately fills all rows. Fresh installs use `CREATE TABLE` with `NOT NULL`.
 - *Instructor dashboard scoped to their classes.* `list_questions_for_user` joins through `class_members` so instructors only see questions from classes they belong to — even if other classes exist on the same instance.
+
+## Phase 4 — Quantitative Scoring
+
+The fourth phase added optional numeric scoring so students can track their progress quantitatively alongside qualitative feedback.
+
+**What was built:**
+- `parse_scored_paragraphs(model_answer)` in `feedback.py`: regex-based parser that splits the model answer on blank lines and extracts trailing `[N]` point markers (N ≥ 1).
+- `total_points(paragraphs)` and `validate_score(data, paragraphs)` helper functions.
+- `SCORING_SYSTEM_PROMPT` and `generate_score(paragraphs, student_answer, attempt_number)` in `feedback.py`: a second, non-streaming Anthropic API call using a strict examiner persona that returns a JSON score array.
+- `score_data TEXT` nullable column on the `attempts` table, with an idempotent Phase 4 migration in `init_db()`.
+- `update_attempt_score(attempt_id, score_data)` in `db.py` to store scores separately from attempt creation (scoring runs after the attempt is saved, so failures don't lose the attempt).
+- Updated `create_attempt(...)` signature to accept optional `score_data`.
+- Updated `get_attempts(...)` to deserialize `score_data` from JSON.
+- Updated `/api/feedback` SSE endpoint in `app.py` to emit an optional `score` event after `done`.
+- `renderScore(scoreData, container)` in `app.js`: builds the score table DOM for both live feedback and history cards.
+- `.score-section` and related CSS in `style.css`.
+- 12 new unit tests in `test_feedback.py` for the parse/validate functions.
+- `test_scoring_integration.py` with 3 DB unit tests and 7 FastAPI integration tests using mocked LLM calls.
+
+**Key design decisions made in Phase 4:**
+- *Opt-in scoring.* Instructors add `[N]` markers to their model answers only if they want numeric scoring. Questions without markers produce no score event — the UI stays unchanged for them.
+- *Scoring after saving.* The attempt is written to the database before `generate_score()` is called. If scoring fails (invalid LLM response, network error), the attempt and qualitative feedback are preserved. `update_attempt_score` patches the row only on success.
+- *Graceful degradation.* `generate_score()` returns `None` on any failure — bad JSON, schema mismatch, out-of-range values, or API error. The `score` SSE event is only emitted on success, so students never see an error from the scoring path.
+- *N ≥ 1 enforcement.* The regex `\[([1-9]\d*)\]` rejects `[0]` markers. Zero-point sections are meaningless for scoring and could confuse the LLM.
+- *Separate LLM call.* Scoring uses a different, tightly constrained system prompt from feedback. Mixing the two concerns in one call would make the prompt more fragile and harder to iterate on independently.

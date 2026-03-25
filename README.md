@@ -26,6 +26,7 @@ The AI compares student answers against the instructor's model answer but **neve
 - **Structure**: How the argument's organization could improve
 - **Accuracy**: Any factual errors or misconceptions
 - **Progress** (attempt 2+): What improved since last attempt
+- **Score** (optional): If the instructor annotated their model answer with point values (e.g. `[3]` at the end of a paragraph), students receive a numeric score after each submission showing points earned per section
 
 Feedback becomes more specific with each attempt, guiding students toward discovering the shape of a good answer through revision.
 

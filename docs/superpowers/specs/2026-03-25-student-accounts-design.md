@@ -74,7 +74,7 @@ All new `db.py` functions must use `_connect()` (the private helper already used
 
 ### New Routes (in `app.py`)
 
-All five routes are registered before `# ---- Auth API routes ----`. Add all nine new `db.py` functions to the `from db import (...)` block at the top of `app.py`.
+All five routes are registered before `# ---- Auth API routes ----`. Add all nine new `db.py` functions to the `from db import (...)` block at the top of `app.py`. `hash_password`, `verify_password`, and `generate_token` are already imported from `auth` in the existing `from auth import (...)` block and require no change.
 
 #### `POST /api/student/auth/register`
 
@@ -217,6 +217,7 @@ def fresh_db(tmp_path, monkeypatch):
     monkeypatch.setattr("config.DATABASE_PATH", db_path)
     monkeypatch.setattr("db.DATABASE_PATH", db_path)
     db.init_db()
+    yield
 ```
 
 Tests that need to inspect raw DB rows should open `sqlite3.connect(db_path)` directly using the `tmp_path` fixture value.

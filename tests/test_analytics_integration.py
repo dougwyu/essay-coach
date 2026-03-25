@@ -5,6 +5,8 @@ from db import (
     create_class,
     create_question,
     create_attempt,
+    create_user,
+    add_class_member,
     get_class_question_stats,
     get_question_session_stats,
     get_setting,
@@ -246,8 +248,6 @@ def test_class_analytics_404_if_class_not_found(client):
 
 def test_class_analytics_403_if_not_member(client):
     _register_and_login(client, "alice")
-    from db import create_class, create_user, add_class_member
-    from auth import hash_password
     bob_id = create_user("bob2", hash_password("password123"))
     cid = create_class("Bob class", "SBOB0001", "IBOB0001", bob_id)
     add_class_member(cid, bob_id)
@@ -276,8 +276,6 @@ def test_question_analytics_404_if_question_not_found(client):
 
 def test_question_analytics_403_if_not_member(client):
     _register_and_login(client, "alice")
-    from db import create_class, create_question, create_user, add_class_member
-    from auth import hash_password
     bob_id = create_user("bob2", hash_password("password123"))
     cid = create_class("Bob class", "SBOB0002", "IBOB0002", bob_id)
     add_class_member(cid, bob_id)

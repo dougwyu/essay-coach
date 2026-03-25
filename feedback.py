@@ -1,6 +1,47 @@
 # SECURITY: model_answer is server-side only, never sent to client
+import re
+
 import anthropic
 from config import ANTHROPIC_API_KEY, MODEL_NAME
+
+
+def parse_scored_paragraphs(model_answer: str) -> list[dict]:
+    """Split model_answer into paragraphs, extracting trailing [N] point values.
+    Returns list of {"text": str, "points": int | None}.
+    """
+    paragraphs = [p.strip() for p in re.split(r'\n\s*\n', model_answer.strip()) if p.strip()]
+    pattern = re.compile(r'^(.*?)\s*\[(\d+)\]\s*$', re.DOTALL)
+    result = []
+    for p in paragraphs:
+        m = pattern.match(p)
+        if m:
+            result.append({"text": m.group(1).strip(), "points": int(m.group(2))})
+        else:
+            result.append({"text": p, "points": None})
+    return result
+
+
+def total_points(paragraphs: list[dict]) -> int:
+    return sum(p["points"] for p in paragraphs if p["points"] is not None)
+
+
+def validate_score(data: dict, paragraphs: list[dict]) -> bool:
+    scored = [p for p in paragraphs if p["points"] is not None]
+    if len(data.get("breakdown", [])) != len(scored):
+        return False
+    for item, para in zip(data["breakdown"], scored):
+        if not (0 <= item["awarded"] <= item["max"]):
+            return False
+        if item["max"] != para["points"]:
+            return False
+    expected_total_max = sum(p["points"] for p in scored)
+    expected_total_awarded = sum(item["awarded"] for item in data["breakdown"])
+    if data.get("total_max") != expected_total_max:
+        return False
+    if data.get("total_awarded") != expected_total_awarded:
+        return False
+    return True
+
 
 SYSTEM_PROMPT = """You are an essay coach helping a university student improve their answer. You have access to the instructor's model answer and rubric, but you must NEVER reveal the model answer's content directly. Your job is to give the student directional feedback so they can discover the shape of a good answer through revision.
 

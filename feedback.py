@@ -10,7 +10,7 @@ def parse_scored_paragraphs(model_answer: str) -> list[dict]:
     Returns list of {"text": str, "points": int | None}.
     """
     paragraphs = [p.strip() for p in re.split(r'\n\s*\n', model_answer.strip()) if p.strip()]
-    pattern = re.compile(r'^(.*?)\s*\[(\d+)\]\s*$', re.DOTALL)
+    pattern = re.compile(r'^(.*?)\s*\[([1-9]\d*)\]\s*$', re.DOTALL)
     result = []
     for p in paragraphs:
         m = pattern.match(p)

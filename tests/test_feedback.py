@@ -133,6 +133,12 @@ def test_validate_score_fails_breakdown_length_mismatch():
     assert validate_score(data, paras) is False
 
 
+def test_parse_zero_points_not_scored():
+    result = parse_scored_paragraphs("This has a zero marker. [0]")
+    assert result[0]["points"] is None
+    assert "[0]" in result[0]["text"] or result[0]["text"] == "This has a zero marker. [0]"
+
+
 def test_validate_score_fails_max_mismatch():
     paras = [{"text": "a", "points": 3}]
     data = {

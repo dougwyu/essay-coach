@@ -1,5 +1,130 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Session Detail</title></head>
-<body><p>Question analytics stub</p></body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach — Session Detail</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Essay Coach <span class="badge">Instructor</span></h1>
+        <nav>
+            <span class="username-display">{{ username }}</span>
+            <a href="/instructor">&larr; Dashboard</a>
+            <form method="POST" action="/logout" style="display:inline; margin-left:0.75rem;">
+                <button type="submit" class="btn btn-small">Sign Out</button>
+            </form>
+        </nav>
+    </header>
+
+    <main class="analytics-page">
+        <div class="analytics-header">
+            <a href="/instructor/classes/{{ class_id }}/analytics" class="breadcrumb">&larr; Back to Class Analytics</a>
+            <h2>{{ question.title }} — Session Detail</h2>
+        </div>
+
+        <div class="analytics-tiles">
+            <div class="analytics-tile">
+                <div class="tile-value">{{ total_sessions }}</div>
+                <div class="tile-label">Sessions</div>
+            </div>
+            <div class="analytics-tile">
+                <div class="tile-value">{{ "%.1f"|format(avg_attempts) }}</div>
+                <div class="tile-label">Avg attempts</div>
+            </div>
+            <div class="analytics-tile">
+                <div class="tile-value">
+                    {% if avg_final_score is not none %}
+                        {{ "%.1f"|format(avg_final_score) }} / {{ max_total }}
+                    {% else %}
+                        &mdash;
+                    {% endif %}
+                </div>
+                <div class="tile-label">Avg final score</div>
+            </div>
+        </div>
+
+        {% if sessions %}
+        <table class="analytics-table">
+            <thead>
+                <tr>
+                    <th>Session</th>
+                    <th class="col-center">Attempts</th>
+                    <th>Score progression</th>
+                    <th class="col-center">Final score</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sessions %}
+                <tr id="session-row-{{ loop.index }}">
+                    <td class="session-id-cell">{{ s.session_id[:4] }}&hellip;{{ s.session_id[-4:] }}</td>
+                    <td class="col-center">{{ s.attempt_count }}</td>
+                    <td>
+                        {% set has_any_score = s.score_progression | select | list | length > 0 %}
+                        {% if has_any_score %}
+                            {% for score in s.score_progression %}
+                                {% if loop.last %}<strong>{{ score if score is not none else '&mdash;' }}</strong>{% else %}{{ score if score is not none else '&mdash;' }} &rarr; {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <span class="analytics-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td class="col-center">
+                        {% if s.final_score is not none %}
+                            {% set pct = s.final_score / s.max_total %}
+                            {% if pct >= 0.70 %}
+                                <span class="score-high">{{ s.final_score }} / {{ s.max_total }}</span>
+                            {% elif pct >= 0.40 %}
+                                <span class="score-mid">{{ s.final_score }} / {{ s.max_total }}</span>
+                            {% else %}
+                                <span class="score-low">{{ s.final_score }} / {{ s.max_total }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="analytics-muted">&mdash;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button class="btn btn-small" onclick="toggleAnswers({{ loop.index }})">
+                            &#9654; Show answers
+                        </button>
+                    </td>
+                </tr>
+                <tr id="answers-row-{{ loop.index }}" style="display:none">
+                    <td colspan="5" class="answers-cell">
+                        {% for attempt in s.attempts %}
+                        <div class="attempt-block">
+                            <div class="attempt-label">Attempt {{ attempt.attempt_number }}</div>
+                            <div class="attempt-answer">{{ attempt.student_answer }}</div>
+                            {% if loop.last and attempt.feedback %}
+                            <div class="attempt-feedback-label">AI Feedback</div>
+                            <div class="attempt-feedback">{{ attempt.feedback }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No student submissions yet.</p>
+        {% endif %}
+    </main>
+
+    <script>
+    function toggleAnswers(idx) {
+        var row = document.getElementById('answers-row-' + idx);
+        var btn = document.querySelector('#session-row-' + idx + ' button');
+        if (row.style.display === 'none') {
+            row.style.display = '';
+            btn.textContent = '\u25BE Hide answers';
+        } else {
+            row.style.display = 'none';
+            btn.textContent = '\u25B6 Show answers';
+        }
+    }
+    </script>
+</body>
 </html>

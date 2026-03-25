@@ -6,9 +6,22 @@ Give instructors two new read-only pages: a class-level summary showing aggregat
 
 ## Context
 
-Students are identified only by a browser-generated UUID (`session_id`) stored in `localStorage`. There is no student login. "Per-student" analytics therefore means "per session." All the data needed already exists in the `attempts` table (`session_id`, `attempt_number`, `student_answer`, `feedback`, `score_data`).
+Students are identified only by a browser-generated UUID (`session_id`) stored in `localStorage`. There is no student login. "Per-student" analytics therefore means "per session." All the data needed already exists in the `attempts` table (`session_id`, `attempt_number`, `student_answer`, `feedback`, `score_data`, `created_at`).
 
-Score data is optional — questions without `[N]` point markers in the model answer produce no `score_data`. The analytics UI handles both scored and unscored questions gracefully.
+**`score_data` structure:** When present, `score_data` is stored as a JSON text string in SQLite and must be deserialized via `json.loads` before use. The deserialized dict has this shape:
+
+```json
+{
+  "breakdown": [
+    {"label": "<string>", "awarded": <int>, "max": <int>},
+    ...
+  ],
+  "total_awarded": <int>,
+  "total_max": <int>
+}
+```
+
+`total_awarded` is the student's score for that attempt. `total_max` is the maximum possible score (constant across all attempts for the same question). Score data is optional — questions without `[N]` point markers in the model answer have `NULL` `score_data` on all attempts. The analytics UI handles both scored and unscored questions gracefully.
 
 ---
 
@@ -16,19 +29,22 @@ Score data is optional — questions without `[N]` point markers in the model an
 
 ### New Routes
 
-Both routes require instructor authentication and class membership (same checks as existing class-scoped routes).
+Both routes require instructor authentication and class membership. They are HTML routes (not API routes), so they use `_validate_session` directly and redirect to `/login` on failure — the same pattern as `/instructor` and `/instructor/classes`.
 
 | Method | Route | Template | Description |
 |--------|-------|----------|-------------|
 | `GET` | `/instructor/classes/{class_id}/analytics` | `instructor-analytics-class.html` | Class summary: one row per question |
 | `GET` | `/instructor/analytics/{question_id}` | `instructor-analytics-question.html` | Question detail: one row per session |
 
-The question detail route additionally verifies the question belongs to a class the instructor is a member of (same membership check, via the question's `class_id`).
+**Class summary route:** After session validation, calls `get_class(class_id)` to fetch the class. Returns 404 if the class does not exist. Then checks `is_class_member(class_id, user_id)` — returns 403 if not a member. Passes `class_name` from the class record to the template.
+
+**Question detail route:** After session validation, fetches the question by `question_id`. Returns 404 if the question does not exist. Derives `class_id` from `question.class_id`, then checks `is_class_member(class_id, user_id)`. Returns 403 if not a member. Passes `class_id` as a template context variable so the breadcrumb back-link is correct.
+
+Register these routes in `app.py` after the existing `/instructor/classes` routes. Register `/instructor/classes/{class_id}/analytics` before any future parameterized `/instructor/classes/{class_id}` catch-all HTML route to ensure correct FastAPI route matching order.
 
 ### Entry Points
 
-- A new **Analytics** link is added to the class header area on the existing instructor dashboard (`instructor.html`), linking to `/instructor/classes/{class_id}/analytics` for each class the filter is set to.
-- Each row in the class summary links to `/instructor/analytics/{question_id}`.
+In `instructor.html`, the existing class filter section shows a dropdown and class badges. A new **Analytics** link is added beside each class badge (or in the class filter section header), one per class, linking to `/instructor/classes/{class_id}/analytics` for that class. Each question card also gets a small **Analytics** link that goes directly to `/instructor/analytics/{question_id}`.
 
 ---
 
@@ -38,48 +54,64 @@ The question detail route additionally verifies the question belongs to a class 
 
 **`get_class_question_stats(class_id: str) -> list[dict]`**
 
-Returns one dict per question in the class:
+Returns one dict per question in the class. When there are no sessions for a question, `total_sessions=0`, `avg_attempts=0.0`, `avg_final_score=None`, `max_total=None`, `score_buckets=None`.
 
 ```python
 {
     "question_id": str,
     "title": str,
-    "total_sessions": int,        # distinct session_ids that submitted
-    "avg_attempts": float,        # mean attempts per session
-    "avg_final_score": float | None,   # mean of each session's highest-attempt score
-    "max_total": int | None,      # max_total from score_data (same for all attempts)
-    "score_buckets": {            # None if question is unscored
-        "low": int,   # sessions where final score < 40% of max_total
-        "mid": int,   # sessions where final score 40–70% of max_total
-        "high": int,  # sessions where final score > 70% of max_total
+    "total_sessions": int,         # distinct session_ids with at least one attempt
+    "avg_attempts": float,         # mean attempts per session; 0.0 if no sessions
+    "avg_final_score": float | None,  # mean of each session's final total_awarded; None if unscored or no sessions
+    "max_total": int | None,       # total_max from score_data; None if unscored
+    "score_buckets": {             # None if question is unscored or has no sessions
+        "low": int,    # sessions where final score / max_total < 0.40
+        "mid": int,    # sessions where 0.40 <= final score / max_total < 0.70
+        "high": int,   # sessions where final score / max_total >= 0.70
     }
 }
 ```
 
-Implementation: single SQL query fetching all attempts for all questions in the class, grouped in Python. Sessions with no `score_data` on any attempt are counted but have `None` scores.
+If the class has no questions, return `[]` immediately without executing the attempts query (avoids an empty `IN ()` clause which is a SQLite syntax error).
+
+Implementation: fetch all attempts for all questions in the class (`SELECT * FROM attempts WHERE question_id IN (...) ORDER BY question_id, session_id, attempt_number`), deserialize `score_data` using `if row["score_data"]: json.loads(row["score_data"])` (truthy guard, not `is not None`, to match the existing `get_attempts` pattern — the column may be an empty string rather than NULL on some migration paths), then group and aggregate in Python.
 
 **`get_question_session_stats(question_id: str) -> list[dict]`**
 
-Returns one dict per session, sorted by `attempt_count` descending (most engaged first):
+Returns one dict per session, sorted by `attempt_count` descending (most attempts first). `score_progression` is the list of `total_awarded` values per attempt in ascending attempt order; `None` entries for attempts with no score data.
 
 ```python
 {
-    "session_id": str,            # full UUID
+    "session_id": str,                       # full UUID
     "attempt_count": int,
-    "score_progression": list[int | None],  # scores in attempt order; None if unscored
-    "final_score": int | None,    # score from the last attempt
-    "max_total": int | None,
-    "attempts": [                 # all attempts, ascending order
+    "score_progression": list[int | None],   # total_awarded per attempt, ascending; all None if unscored
+    "final_score": int | None,               # total_awarded of the last attempt; None if unscored
+    "max_total": int | None,                 # total_max; None if unscored
+    "attempts": [                            # all attempts, ascending attempt_number order
         {
             "attempt_number": int,
             "student_answer": str,
-            "score_data": dict | None,
+            "score_data": dict | None,       # deserialized; None if not scored
         }
     ]
 }
 ```
 
-Implementation: `SELECT * FROM attempts WHERE question_id = ? ORDER BY session_id, attempt_number`, then group by `session_id` in Python.
+Implementation: `SELECT * FROM attempts WHERE question_id = ? ORDER BY session_id, attempt_number`, deserialize `score_data` using `if row["score_data"]: json.loads(row["score_data"])` (same truthy guard as above), group by `session_id` in Python. `None` entries in `score_progression` are displayed as `—` in the `→`-joined sequence in the template.
+
+---
+
+## Score Bucketing
+
+Thresholds are based on `total_awarded / total_max`. Applied consistently in both the Python bucketing logic and the Jinja2 template color-coding:
+
+| Bucket | Condition | Color |
+|--------|-----------|-------|
+| low (red) | `total_awarded / total_max < 0.40` | red |
+| mid (yellow) | `0.40 <= total_awarded / total_max < 0.70` | yellow |
+| high (green) | `total_awarded / total_max >= 0.70` | green |
+
+Sessions without score data are excluded from bucketing and the avg score calculation, but counted in `total_sessions` and `avg_attempts`.
 
 ---
 
@@ -90,9 +122,10 @@ Implementation: `SELECT * FROM attempts WHERE question_id = ? ORDER BY session_i
 Full-width single-column layout (no form/list split). Context from server: `class_name`, `class_id`, `question_stats`.
 
 - Top nav: site name + Sign Out (same pattern as `instructor-classes.html`)
-- Breadcrumb: `← Back to Dashboard`
+- Breadcrumb: `← Back to Dashboard` (links to `/instructor`)
 - Page heading: `{class_name} — Analytics`
-- Table with columns: Question · Sessions · Avg attempts · Avg score · Score distribution · (link)
+- Table columns: Question · Sessions · Avg attempts · Avg score · Score distribution · (link)
+- Avg score display format: `{avg_final_score:.1f} / {max_total}` (e.g., `7.1 / 10`). Unscored questions show `—`.
 - Score distribution: a `<div>` bar split into red/yellow/green segments proportional to `score_buckets` counts. Unscored questions show `—` in score columns and "No scoring" in distribution column.
 - Each row's "View →" links to `/instructor/analytics/{question_id}`
 
@@ -104,36 +137,22 @@ Context from server: `question` (id, title, prompt), `class_id`, `sessions`.
 - Breadcrumb: `← Back to Class Analytics` (links to `/instructor/classes/{class_id}/analytics`)
 - Page heading: `{question.title} — Session Detail`
 - Three stat tiles: Sessions · Avg attempts · Avg final score (or "—" if unscored)
-- Table with columns: Session · Attempts · Score progression · Final score · (toggle)
+- Table columns: Session · Attempts · Score progression · Final score · (toggle)
   - Session: truncated UUID (`{first4}…{last4}`)
-  - Score progression: attempt scores joined with `→`, final score bolded (e.g., `5 → 7 → **9**`). "—" if unscored.
-  - Final score: color-coded — green ≥70%, yellow 40–69%, red <40% of max. "—" if unscored.
-  - Toggle: "▶ Show answers" / "▼ Hide answers" — expands an inline row showing each attempt's answer text
+  - Score progression: `total_awarded` values joined with `→`, final value bolded. "—" if unscored.
+  - Final score: color-coded per bucketing thresholds above. "—" if unscored.
+  - Toggle: "▶ Show answers" / "▼ Hide answers" — expands an inline row showing each attempt's answer text and attempt number
 - Sorted by `attempt_count` descending
 
 "Show answers" toggle: small inline `<script>` in the template, no changes to `app.js`.
 
 ---
 
-## Score Bucketing
-
-Thresholds are based on percentage of `max_total`:
-
-| Bucket | Condition |
-|--------|-----------|
-| low (red) | final score / max_total < 0.40 |
-| mid (yellow) | 0.40 ≤ final score / max_total ≤ 0.70 |
-| high (green) | final score / max_total > 0.70 |
-
-Sessions without score data are excluded from bucketing and the avg score calculation, but counted in `total_sessions` and `avg_attempts`.
-
----
-
 ## Security
 
-- Both routes use `_validate_session` + redirect to `/login` on failure (HTML routes, not API routes — same pattern as `/instructor` and `/instructor/classes`).
-- Class membership check: `is_class_member(class_id, user_id)` — same as `/instructor/classes/{class_id}/settings`.
-- Question detail route: fetches question, checks `is_class_member(question.class_id, user_id)`.
+- Both routes use `_validate_session` + redirect to `/login` on failure (HTML routes — same pattern as `/instructor` and `/instructor/classes`).
+- Class summary: `is_class_member(class_id, user_id)` — 403 if not a member.
+- Question detail: fetch question → 404 if not found → `is_class_member(question.class_id, user_id)` → 403 if not a member.
 - Neither route exposes model answers or rubrics.
 
 ---
@@ -141,21 +160,26 @@ Sessions without score data are excluded from bucketing and the avg score calcul
 ## Testing (`tests/test_analytics_integration.py`)
 
 **DB unit tests for `get_class_question_stats`:**
-- Empty question (no sessions) → `total_sessions=0`, `avg_attempts=0`, `avg_final_score=None`
+- Class with no questions → returns `[]` (no DB query for attempts)
+- Empty question (no sessions) → `total_sessions=0`, `avg_attempts=0.0`, `avg_final_score=None`, `score_buckets=None`
 - Single session, unscored → correct counts, `None` score fields
 - Multiple sessions with scores → correct averages and bucket counts
-- Score bucket boundary values: exactly 40% → mid, exactly 70% → mid, 70.1% → high
+- Score bucket boundary: `total_awarded / total_max == 0.40` → `mid` bucket
+- Score bucket boundary: `total_awarded / total_max == 0.70` → `high` bucket (threshold is `>=`)
+- Score bucket boundary: `total_awarded / total_max == 0.699` → `mid` bucket
 
 **DB unit tests for `get_question_session_stats`:**
-- Single attempt session → `attempt_count=1`, progression list length 1
-- Multi-attempt session with score improvement → progression in correct order
-- Session with no score data → `None` in progression, `None` final score
-- Sort order: session with more attempts appears first
+- Single attempt session → `attempt_count=1`, `score_progression` length 1
+- Multi-attempt session with score improvement → `score_progression` in ascending attempt order, `final_score` from last attempt
+- Session with no score data → all `None` in `score_progression`, `final_score=None`
+- Sort order: session with more attempts appears before session with fewer
 
 **Integration tests (FastAPI routes):**
-- `GET /instructor/classes/{id}/analytics` → 302 redirect if unauthenticated
-- `GET /instructor/classes/{id}/analytics` → 403 if authenticated but not a member
+- `GET /instructor/classes/{id}/analytics` → 302 redirect to `/login` if unauthenticated
+- `GET /instructor/classes/{id}/analytics` → 404 if `class_id` does not exist
+- `GET /instructor/classes/{id}/analytics` → 403 if authenticated but not a class member
 - `GET /instructor/classes/{id}/analytics` → 200 with correct `question_stats` shape for authenticated member
-- `GET /instructor/analytics/{question_id}` → 302 redirect if unauthenticated
-- `GET /instructor/analytics/{question_id}` → 403 if not a member of the question's class
-- `GET /instructor/analytics/{question_id}` → 200 with correct `sessions` shape for authenticated member
+- `GET /instructor/analytics/{question_id}` → 302 redirect to `/login` if unauthenticated
+- `GET /instructor/analytics/{question_id}` → 404 if `question_id` does not exist
+- `GET /instructor/analytics/{question_id}` → 403 if question exists but instructor is not a member of its class
+- `GET /instructor/analytics/{question_id}` → 200 with correct `sessions` shape for authenticated member of the question's class

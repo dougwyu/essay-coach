@@ -66,6 +66,25 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS student_users (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS student_sessions (
+            token TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL REFERENCES student_users(id) ON DELETE CASCADE,
+            expires_at TIMESTAMP NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS student_question_sessions (
+            id TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL REFERENCES student_users(id) ON DELETE CASCADE,
+            question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(student_id, question_id)
+        );
         DELETE FROM sessions WHERE expires_at < datetime('now');
     """)
 
@@ -579,3 +598,101 @@ def get_question_session_stats(question_id: str) -> list[dict]:
 
     result.sort(key=lambda s: s["attempt_count"], reverse=True)
     return result
+
+
+# --- student users ---
+
+def create_student_user(username: str, email: str, password_hash: str) -> str:
+    uid = str(uuid.uuid4())
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO student_users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+        (uid, username, email, password_hash),
+    )
+    conn.commit()
+    conn.close()
+    return uid
+
+
+def get_student_by_username(username: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM student_users WHERE username = ?", (username,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_student_by_email(email: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM student_users WHERE email = ?", (email,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_student_by_id(student_id: str) -> dict | None:
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM student_users WHERE id = ?", (student_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_student_session(token: str, student_id: str, expires_at: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO student_sessions (token, student_id, expires_at) VALUES (?, ?, ?)",
+        (token, student_id, expires_at),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_student_session(token: str) -> dict | None:
+    """Return session if it exists and has not expired; None otherwise."""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM student_sessions WHERE token = ? AND expires_at > datetime('now')",
+        (token,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_student_session_expiry(token: str, expires_at: str) -> None:
+    conn = _connect()
+    conn.execute(
+        "UPDATE student_sessions SET expires_at = ? WHERE token = ?",
+        (expires_at, token),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_student_session(token: str) -> None:
+    conn = _connect()
+    conn.execute("DELETE FROM student_sessions WHERE token = ?", (token,))
+    conn.commit()
+    conn.close()
+
+
+def get_or_create_question_session(student_id: str, question_id: str) -> str:
+    """Return the session UUID for (student_id, question_id), creating it if needed.
+    Uses INSERT OR IGNORE + SELECT to be idempotent and race-safe."""
+    sid = str(uuid.uuid4())
+    conn = _connect()
+    conn.execute(
+        "INSERT OR IGNORE INTO student_question_sessions (id, student_id, question_id)"
+        " VALUES (?, ?, ?)",
+        (sid, student_id, question_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT id FROM student_question_sessions WHERE student_id = ? AND question_id = ?",
+        (student_id, question_id),
+    ).fetchone()
+    conn.close()
+    return row["id"]

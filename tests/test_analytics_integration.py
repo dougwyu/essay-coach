@@ -29,7 +29,6 @@ def _make_question(class_id, title="Q1"):
 
 
 def _make_attempt(question_id, session_id, attempt_number, score_data=None):
-    score_json = json.dumps(score_data) if score_data else None
     return create_attempt(question_id, session_id, "student answer", "feedback", attempt_number, score_data)
 
 

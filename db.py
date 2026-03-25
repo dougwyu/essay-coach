@@ -3,6 +3,7 @@ import sqlite3
 import uuid
 import secrets
 import string
+from collections import defaultdict
 from config import DATABASE_PATH
 
 
@@ -462,7 +463,6 @@ def get_class_question_stats(class_id: str) -> list[dict]:
     conn.close()
 
     # group attempts by question_id then by session_id
-    from collections import defaultdict
     q_sessions: dict = defaultdict(lambda: defaultdict(list))
     for row in rows:
         d = dict(row)

@@ -12,7 +12,9 @@
       "Bash(git check-ignore:*)",
       "Bash(pip install:*)",
       "Bash(python3 -m pytest tests/test_classes.py tests/test_classes_integration.py -q)",
-      "Bash(python3 -m pytest -q)"
+      "Bash(python3 -m pytest -q)",
+      "Bash(ls /Users/douglasyu/src/Cowork/essay-coach/docs/*.png)",
+      "Bash(bash /Users/douglasyu/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5/skills/brainstorming/scripts/start-server.sh --project-dir /Users/douglasyu/src/Cowork/essay-coach)"
     ]
   }
 }

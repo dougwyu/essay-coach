@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -247,17 +247,17 @@ def instructor_question_analytics(
     )
 
 
-def _make_export_response(content: str, media_type: str, filename: str):
-    from fastapi.responses import Response
+def _make_export_response(content: str, media_type: str, basename: str):
+    ext = "json" if media_type == "application/json" else "csv"
     return Response(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{basename}.{ext}"'},
     )
 
 
 @app.get("/instructor/analytics/{question_id}/export")
-async def export_question(
+def export_question(
     question_id: str,
     format: str = Query(default="csv"),
     session_token: str | None = Cookie(default=None),
@@ -272,12 +272,11 @@ async def export_question(
         raise HTTPException(status_code=403)
     sessions = get_question_session_stats(question_id)
     content, media_type = format_question_export(sessions, format)
-    filename = f"question-{question_id[:8]}.{'json' if format == 'json' else 'csv'}"
-    return _make_export_response(content, media_type, filename)
+    return _make_export_response(content, media_type, f"question-{question_id[:8]}")
 
 
 @app.get("/instructor/classes/{class_id}/analytics/export")
-async def export_class(
+def export_class(
     class_id: str,
     format: str = Query(default="csv"),
     session_token: str | None = Cookie(default=None),
@@ -304,8 +303,7 @@ async def export_class(
                 }
             )
     content, media_type = format_class_export(session_rows, format)
-    filename = f"class-{class_id[:8]}.{'json' if format == 'json' else 'csv'}"
-    return _make_export_response(content, media_type, filename)
+    return _make_export_response(content, media_type, f"class-{class_id[:8]}")
 
 
 # ---- Auth API routes ----

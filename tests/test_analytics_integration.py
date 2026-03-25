@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import pytest
 from db import (
@@ -379,8 +381,7 @@ def test_question_export_unscored(client):
     _make_attempt(qid, sid, 1)  # no score_data
 
     r_csv = client.get(f"/instructor/analytics/{qid}/export?format=csv")
-    import csv as _csv, io
-    rows = list(_csv.DictReader(io.StringIO(r_csv.text)))
+    rows = list(csv.DictReader(io.StringIO(r_csv.text)))
     assert rows[0]["score_awarded"] == ""
     assert rows[0]["max_score"] == ""
 
@@ -424,7 +425,7 @@ def test_class_export_csv_happy_path(client):
     r = client.get(f"/instructor/classes/{cid}/analytics/export?format=csv")
     assert r.status_code == 200
     assert "text/csv" in r.headers["content-type"]
-    assert "class-" in r.headers["content-disposition"]
+    assert 'attachment; filename="class-' in r.headers["content-disposition"]
     lines = r.text.strip().splitlines()
     assert len(lines) == 3  # header + 2 rows
     assert "Question One" in r.text

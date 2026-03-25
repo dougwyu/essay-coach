@@ -44,6 +44,8 @@ from db import (
     add_class_member,
     is_class_member,
     get_class_question_count,
+    get_class_question_stats,
+    get_question_session_stats,
     update_class_student_code,
     update_class_instructor_code,
 )
@@ -175,6 +177,72 @@ def instructor_classes_page(
     return templates.TemplateResponse(
         "instructor-classes.html",
         {"request": request, "classes": classes, "username": user["username"]},
+    )
+
+
+@app.get("/instructor/classes/{class_id}/analytics", response_class=HTMLResponse)
+def instructor_class_analytics(
+    request: Request,
+    class_id: str,
+    session_token: str | None = Cookie(default=None),
+):
+    user = _validate_session(session_token)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    cls = get_class(class_id)
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not is_class_member(class_id, user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
+    question_stats = get_class_question_stats(class_id)
+    return templates.TemplateResponse(
+        "instructor-analytics-class.html",
+        {
+            "request": request,
+            "class_name": cls["name"],
+            "class_id": class_id,
+            "question_stats": question_stats,
+            "username": user["username"],
+        },
+    )
+
+
+@app.get("/instructor/analytics/{question_id}", response_class=HTMLResponse)
+def instructor_question_analytics(
+    request: Request,
+    question_id: str,
+    session_token: str | None = Cookie(default=None),
+):
+    user = _validate_session(session_token)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    q = get_question(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if not is_class_member(q["class_id"], user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
+    sessions = get_question_session_stats(question_id)
+    total_sessions = len(sessions)
+    avg_attempts = (
+        sum(s["attempt_count"] for s in sessions) / total_sessions
+        if sessions else 0.0
+    )
+    scored = [s for s in sessions if s["final_score"] is not None]
+    avg_final_score = sum(s["final_score"] for s in scored) / len(scored) if scored else None
+    max_total = scored[0]["max_total"] if scored else None
+    return templates.TemplateResponse(
+        "instructor-analytics-question.html",
+        {
+            "request": request,
+            "question": q,
+            "class_id": q["class_id"],
+            "sessions": sessions,
+            "total_sessions": total_sessions,
+            "avg_attempts": avg_attempts,
+            "avg_final_score": avg_final_score,
+            "max_total": max_total,
+            "username": user["username"],
+        },
     )
 
 

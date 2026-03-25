@@ -668,3 +668,220 @@ textarea {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+
+/* ---- Analytics pages ---- */
+
+.analytics-page {
+    max-width: 960px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+}
+
+.analytics-header {
+    margin-bottom: 1.5rem;
+}
+
+.analytics-header h2 {
+    margin: 0.25rem 0 0;
+    font-size: 1.4rem;
+}
+
+.breadcrumb {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.breadcrumb:hover {
+    text-decoration: underline;
+}
+
+.analytics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.analytics-table th {
+    padding: 0.5rem 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+}
+
+.analytics-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--bg-subtle);
+    vertical-align: top;
+}
+
+.col-center {
+    text-align: center;
+}
+
+.analytics-question-title {
+    font-weight: 500;
+}
+
+.analytics-muted {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.analytics-link {
+    color: var(--primary);
+    font-size: 0.85rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.analytics-link:hover {
+    text-decoration: underline;
+}
+
+.score-dist-bar {
+    display: flex;
+    height: 12px;
+    border-radius: 3px;
+    overflow: hidden;
+    width: 120px;
+    gap: 1px;
+}
+
+.score-dist-seg {
+    min-width: 2px;
+}
+
+.score-dist-low  { background: #ef4444; }
+.score-dist-mid  { background: #f59e0b; }
+.score-dist-high { background: #22c55e; }
+
+.score-dist-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+}
+
+/* ---- Analytics tiles ---- */
+
+.analytics-tiles {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.analytics-tile {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1.25rem;
+    text-align: center;
+    min-width: 120px;
+}
+
+.tile-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.tile-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* ---- Session detail ---- */
+
+.session-id-cell {
+    font-family: monospace;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.score-high { color: #16a34a; font-weight: 600; }
+.score-mid  { color: #d97706; font-weight: 600; }
+.score-low  { color: #dc2626; font-weight: 600; }
+
+.answers-cell {
+    background: var(--bg-subtle);
+    padding: 0.75rem 1.5rem;
+}
+
+.attempt-block {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.attempt-block:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.attempt-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+}
+
+.attempt-answer {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.attempt-feedback-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin: 0.75rem 0 0.35rem;
+}
+
+.attempt-feedback {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+/* ---- Dashboard analytics entry points ---- */
+
+.analytics-class-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.analytics-class-link {
+    font-size: 0.78rem;
+    color: var(--primary);
+    text-decoration: none;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+}
+
+.analytics-class-link::after {
+    content: " Analytics";
+    color: var(--text-muted);
+}
+
+.analytics-class-link:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}

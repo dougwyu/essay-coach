@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essay Coach — Analytics</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>Essay Coach <span class="badge">Instructor</span></h1>
+        <nav>
+            <span class="username-display">{{ username }}</span>
+            <a href="/instructor">&larr; Dashboard</a>
+            <form method="POST" action="/logout" style="display:inline; margin-left:0.75rem;">
+                <button type="submit" class="btn btn-small">Sign Out</button>
+            </form>
+        </nav>
+    </header>
+
+    <main class="analytics-page">
+        <div class="analytics-header">
+            <a href="/instructor" class="breadcrumb">&larr; Back to Dashboard</a>
+            <h2>{{ class_name }} — Analytics</h2>
+        </div>
+
+        {% if question_stats %}
+        <table class="analytics-table">
+            <thead>
+                <tr>
+                    <th>Question</th>
+                    <th class="col-center">Sessions</th>
+                    <th class="col-center">Avg attempts</th>
+                    <th class="col-center">Avg score</th>
+                    <th>Score distribution</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in question_stats %}
+                <tr>
+                    <td class="analytics-question-title">{{ q.title }}</td>
+                    <td class="col-center">{{ q.total_sessions }}</td>
+                    <td class="col-center">{{ "%.1f"|format(q.avg_attempts) }}</td>
+                    <td class="col-center">
+                        {% if q.avg_final_score is not none %}
+                            {{ "%.1f"|format(q.avg_final_score) }} / {{ q.max_total }}
+                        {% else %}
+                            <span class="analytics-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if q.score_buckets %}
+                            <div class="score-dist-bar">
+                                {% if q.score_buckets.low > 0 %}
+                                <div class="score-dist-seg score-dist-low" style="flex:{{ q.score_buckets.low }}"></div>
+                                {% endif %}
+                                {% if q.score_buckets.mid > 0 %}
+                                <div class="score-dist-seg score-dist-mid" style="flex:{{ q.score_buckets.mid }}"></div>
+                                {% endif %}
+                                {% if q.score_buckets.high > 0 %}
+                                <div class="score-dist-seg score-dist-high" style="flex:{{ q.score_buckets.high }}"></div>
+                                {% endif %}
+                            </div>
+                            <div class="score-dist-label">
+                                {{ q.score_buckets.low }} low &middot;
+                                {{ q.score_buckets.mid }} mid &middot;
+                                {{ q.score_buckets.high }} high
+                            </div>
+                        {% else %}
+                            <span class="analytics-muted">No scoring</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/instructor/analytics/{{ q.question_id }}" class="analytics-link">View &rarr;</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No questions in this class yet.</p>
+        {% endif %}
+    </main>
+</body>
+</html>

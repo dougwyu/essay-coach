@@ -441,3 +441,88 @@ def list_questions_for_user(user_id: str) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_class_question_stats(class_id: str) -> list[dict]:
+    conn = _connect()
+    questions = conn.execute(
+        "SELECT id, title FROM questions WHERE class_id = ? ORDER BY created_at ASC",
+        (class_id,),
+    ).fetchall()
+    if not questions:
+        conn.close()
+        return []
+
+    q_ids = [q["id"] for q in questions]
+    placeholders = ",".join("?" * len(q_ids))
+    rows = conn.execute(
+        f"SELECT * FROM attempts WHERE question_id IN ({placeholders}) ORDER BY question_id, session_id, attempt_number",
+        q_ids,
+    ).fetchall()
+    conn.close()
+
+    # group attempts by question_id then by session_id
+    from collections import defaultdict
+    q_sessions: dict = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        d = dict(row)
+        if d.get("score_data"):
+            d["score_data"] = json.loads(d["score_data"])
+        q_sessions[d["question_id"]][d["session_id"]].append(d)
+
+    result = []
+    for q in questions:
+        qid = q["id"]
+        sessions = q_sessions.get(qid, {})
+        total_sessions = len(sessions)
+
+        if total_sessions == 0:
+            result.append({
+                "question_id": qid,
+                "title": q["title"],
+                "total_sessions": 0,
+                "avg_attempts": 0.0,
+                "avg_final_score": None,
+                "max_total": None,
+                "score_buckets": None,
+            })
+            continue
+
+        attempt_counts = []
+        final_scores = []
+        max_total = None
+        buckets = {"low": 0, "mid": 0, "high": 0}
+
+        for session_id, atts in sessions.items():
+            attempt_counts.append(len(atts))
+            last = atts[-1]
+            sd = last.get("score_data")
+            if sd:
+                score = sd["total_awarded"]
+                mt = sd["total_max"]
+                final_scores.append(score)
+                if max_total is None:
+                    max_total = mt
+                pct = score / mt
+                if pct >= 0.70:
+                    buckets["high"] += 1
+                elif pct >= 0.40:
+                    buckets["mid"] += 1
+                else:
+                    buckets["low"] += 1
+
+        avg_attempts = sum(attempt_counts) / total_sessions
+        avg_final_score = sum(final_scores) / len(final_scores) if final_scores else None
+        score_buckets = buckets if final_scores else None
+
+        result.append({
+            "question_id": qid,
+            "title": q["title"],
+            "total_sessions": total_sessions,
+            "avg_attempts": avg_attempts,
+            "avg_final_score": avg_final_score,
+            "max_total": max_total,
+            "score_buckets": score_buckets,
+        })
+
+    return result

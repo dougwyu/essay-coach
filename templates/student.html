@@ -9,19 +9,51 @@
 <body>
 
 {% if mode == "landing" %}
-<!-- Landing: class code entry (or auto-redirect if class stored in localStorage) -->
+<!-- Step 1: Auth panel (shown when not logged in) -->
 <header>
     <h1>Essay Coach</h1>
 </header>
 <main class="question-list-view">
-    <h2>Enter Your Class Code</h2>
-    <div class="class-entry-form">
-        <div class="field">
-            <input type="text" id="class-code-input" placeholder="e.g. ABC12345" maxlength="8"
-                   style="text-transform:uppercase; max-width:200px;">
+    <div id="auth-panel">
+        <h2>Sign in or create account</h2>
+        <div class="class-entry-form">
+            <div class="field">
+                <input type="text" id="auth-username" placeholder="Username"
+                       style="display:block; width:100%; margin-bottom:0.5rem;">
+            </div>
+            <div class="field" id="auth-email-field" style="display:none">
+                <input type="email" id="auth-email" placeholder="Email"
+                       style="display:block; width:100%; margin-bottom:0.5rem;">
+            </div>
+            <div class="field">
+                <input type="password" id="auth-password" placeholder="Password"
+                       style="display:block; width:100%; margin-bottom:0.5rem;">
+            </div>
+            <button class="btn btn-primary" style="width:100%; margin-bottom:0.4rem;"
+                    onclick="studentSignIn()">Sign in</button>
+            <button class="btn btn-secondary" style="width:100%; margin-bottom:0.75rem;"
+                    onclick="studentRegister()">Create account</button>
+            <p id="auth-error" class="error" style="display:none; margin-bottom:0.5rem;"></p>
+            <p style="font-size:0.85rem; color:var(--text-muted);">
+                No account?
+                <a href="#" onclick="showClassCodePanel(false); return false;">Continue anonymously</a>
+                — then enter your class code on the next panel.
+            </p>
         </div>
-        <button class="btn btn-primary" onclick="resolveClassCode()">Continue</button>
-        <p id="class-code-error" class="error" style="margin-top:0.5rem; display:none;">Class not found. Check your code and try again.</p>
+    </div>
+
+    <!-- Step 2: Class code panel (shown after auth or anonymous) -->
+    <div id="class-code-panel" style="display:none">
+        <div id="student-identity" style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.75rem;"></div>
+        <h2>Enter Your Class Code</h2>
+        <div class="class-entry-form">
+            <div class="field">
+                <input type="text" id="class-code-input" placeholder="e.g. ABC12345" maxlength="8"
+                       style="text-transform:uppercase; max-width:200px;">
+            </div>
+            <button class="btn btn-primary" onclick="resolveClassCode()">Continue</button>
+            <p id="class-code-error" class="error" style="margin-top:0.5rem; display:none;">Class not found. Check your code and try again.</p>
+        </div>
     </div>
 </main>
 <script src="/static/app.js"></script>
@@ -63,6 +95,7 @@
 </header>
 <main class="workspace">
     <div class="workspace-left">
+        <div id="student-identity" style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.5rem;"></div>
         <div class="prompt-section">
             <h2>{{ question.title }}</h2>
             <div class="essay-prompt">{{ question.prompt }}</div>

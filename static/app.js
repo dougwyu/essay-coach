@@ -12,7 +12,30 @@ function getSessionId() {
 // STUDENT
 // ============================================================
 
-function initStudent() {
+// Module-level resolved session ID for this page load
+let _resolvedSessionId = null;
+
+async function initStudent() {
+    // Try to get a server-managed session_id for logged-in students
+    const res = await fetch(`/api/student/session/${QUESTION_ID}`);
+    if (res.ok) {
+        const data = await res.json();
+        _resolvedSessionId = data.session_id;
+        // Show identity indicator
+        const meRes = await fetch('/api/student/auth/me');
+        if (meRes.ok) {
+            const student = await meRes.json();
+            const identityEl = document.getElementById('student-identity');
+            if (identityEl) {
+                identityEl.innerHTML =
+                    `Already signed in as <strong>${escapeHtml(student.username)}</strong> &nbsp;·&nbsp; ` +
+                    `<a href="#" onclick="studentSignOut(); return false;">Sign out</a>`;
+            }
+        }
+    } else {
+        // Anonymous fallback
+        _resolvedSessionId = getSessionId();
+    }
     loadAttemptHistory();
 }
 
@@ -45,7 +68,7 @@ async function submitForFeedback() {
             body: JSON.stringify({
                 question_id: QUESTION_ID,
                 student_answer: answer,
-                session_id: getSessionId()
+                session_id: _resolvedSessionId
             })
         });
 
@@ -113,7 +136,7 @@ function formatFeedback(text) {
 async function loadAttemptHistory() {
     if (typeof QUESTION_ID === 'undefined') return;
 
-    const res = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${getSessionId()}`);
+    const res = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${_resolvedSessionId}`);
     const data = await res.json();
     const container = document.getElementById('history-content');
     if (!container) return;
@@ -365,18 +388,110 @@ async function rotateInstructorCode(classId) {
 
 // ---- Student class helpers ----
 
-// When landing on /student?clear=1 (stale class_id redirect from server), clear localStorage.
-// When a valid class_id is in localStorage, auto-redirect to /student/{class_id}.
-function initStudentLanding() {
+async function initStudentLanding() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('clear')) {
         localStorage.removeItem('essay_coach_class_id');
+    }
+
+    // Check if already authenticated
+    const res = await fetch('/api/student/auth/me');
+    if (res.ok) {
+        const student = await res.json();
+        const stored = localStorage.getItem('essay_coach_class_id');
+        if (stored) {
+            window.location.href = `/student/${stored}`;
+            return;
+        }
+        showClassCodePanel(true, student.username);
+    } else {
+        // Not logged in — check for stored class_id (anonymous fast-path)
+        const stored = localStorage.getItem('essay_coach_class_id');
+        if (stored) {
+            window.location.href = `/student/${stored}`;
+            return;
+        }
+        // Show auth panel (Step 1)
+        document.getElementById('auth-panel').style.display = 'block';
+        document.getElementById('class-code-panel').style.display = 'none';
+    }
+}
+
+function showClassCodePanel(loggedIn, username) {
+    document.getElementById('auth-panel').style.display = 'none';
+    document.getElementById('class-code-panel').style.display = 'block';
+    const identityEl = document.getElementById('student-identity');
+    if (loggedIn && username) {
+        identityEl.innerHTML =
+            `Already signed in as <strong>${escapeHtml(username)}</strong> &nbsp;·&nbsp; ` +
+            `<a href="#" onclick="studentSignOut(); return false;">Sign out</a>`;
+    } else {
+        identityEl.innerHTML =
+            `Browsing anonymously &nbsp;·&nbsp; ` +
+            `<a href="#" onclick="showAuthPanel(); return false;">Sign in</a>`;
+    }
+}
+
+function showAuthPanel() {
+    document.getElementById('auth-panel').style.display = 'block';
+    document.getElementById('class-code-panel').style.display = 'none';
+}
+
+async function studentSignIn() {
+    const username = document.getElementById('auth-username').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const errorEl = document.getElementById('auth-error');
+    errorEl.style.display = 'none';
+    // Hide the email field (used only for registration)
+    document.getElementById('auth-email-field').style.display = 'none';
+    const res = await fetch('/api/student/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username_or_email: username, password })
+    });
+    if (!res.ok) {
+        errorEl.textContent = 'Invalid username or password.';
+        errorEl.style.display = 'block';
         return;
     }
-    const stored = localStorage.getItem('essay_coach_class_id');
-    if (stored) {
-        window.location.href = `/student/${stored}`;
+    const data = await res.json();
+    showClassCodePanel(true, data.username);
+}
+
+async function studentRegister() {
+    const errorEl = document.getElementById('auth-error');
+    errorEl.style.display = 'none';
+    // Show the email field if not already visible
+    const emailField = document.getElementById('auth-email-field');
+    if (emailField.style.display === 'none') {
+        // First click: reveal email field and prompt user to fill it in
+        emailField.style.display = 'block';
+        document.getElementById('auth-email').focus();
+        errorEl.textContent = 'Enter your email above, then click Create account again.';
+        errorEl.style.display = 'block';
+        return;
     }
+    const username = document.getElementById('auth-username').value.trim();
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const res = await fetch('/api/student/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+    });
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        errorEl.textContent = data.detail || 'Registration failed. Check your details and try again.';
+        errorEl.style.display = 'block';
+        return;
+    }
+    const data = await res.json();
+    showClassCodePanel(true, data.username);
+}
+
+async function studentSignOut() {
+    await fetch('/api/student/auth/logout', { method: 'POST' });
+    window.location.href = '/student';
 }
 
 async function resolveClassCode() {

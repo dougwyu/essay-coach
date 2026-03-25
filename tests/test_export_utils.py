@@ -2,7 +2,6 @@
 import csv
 import io
 import json
-import pytest
 from export_utils import format_question_export, format_class_export
 
 
@@ -129,6 +128,13 @@ def test_question_export_json_unscored_uses_empty_string():
 def test_question_export_unknown_format_defaults_to_csv():
     content, media_type = format_question_export([], "xlsx")
     assert media_type == "text/csv"
+
+
+def test_question_export_csv_session_with_no_attempts():
+    sessions = [{"session_id": "empty-session", "attempts": []}]
+    content, _ = format_question_export(sessions, "csv")
+    lines = content.strip().splitlines()
+    assert len(lines) == 1  # header only, no data rows
 
 
 # ── format_class_export ─────────────────────────────────────────────────

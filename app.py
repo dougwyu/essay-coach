@@ -48,6 +48,15 @@ from db import (
     get_question_session_stats,
     update_class_student_code,
     update_class_instructor_code,
+    create_student_user,
+    get_student_by_username,
+    get_student_by_email,
+    get_student_by_id,
+    create_student_session,
+    get_student_session,
+    update_student_session_expiry,
+    delete_student_session,
+    get_or_create_question_session,
 )
 from dependencies import _validate_session, require_instructor_api, require_class_member
 from export_utils import format_question_export, format_class_export
@@ -81,6 +90,19 @@ def _set_session_cookie(response: JSONResponse, token: str) -> None:
         samesite="lax",
         max_age=7 * 24 * 3600,
     )
+
+
+def _validate_student_session(student_session_token: str | None) -> dict | None:
+    """Return student dict if session is valid and not expired, None otherwise.
+    Slides the 30-day expiry window on each valid access."""
+    if not student_session_token:
+        return None
+    session = get_student_session(student_session_token)
+    if not session:
+        return None
+    new_expiry = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    update_student_session_expiry(student_session_token, new_expiry)
+    return get_student_by_id(session["student_id"])
 
 
 # ---- HTML routes ----
@@ -304,6 +326,95 @@ def export_class(
             )
     content, media_type = format_class_export(session_rows, format)
     return _make_export_response(content, media_type, f"class-{class_id[:8]}")
+
+
+# ---- Student Auth API routes ----
+
+class StudentRegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+
+
+class StudentLoginRequest(BaseModel):
+    username_or_email: str
+    password: str
+
+
+@app.post("/api/student/auth/register")
+def api_student_register(data: StudentRegisterRequest):
+    if len(data.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if get_student_by_username(data.username):
+        raise HTTPException(status_code=400, detail="Username already taken")
+    if get_student_by_email(data.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    student_id = create_student_user(data.username, data.email, hash_password(data.password))
+    token = generate_token()
+    expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    create_student_session(token, student_id, expires_at)
+    response = JSONResponse({"id": student_id, "username": data.username})
+    response.set_cookie(
+        key="student_session_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=30 * 24 * 3600,
+    )
+    return response
+
+
+@app.post("/api/student/auth/login")
+def api_student_login(data: StudentLoginRequest):
+    student = get_student_by_username(data.username_or_email)
+    if not student:
+        student = get_student_by_email(data.username_or_email)
+    if not student or not verify_password(data.password, student["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = generate_token()
+    expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    create_student_session(token, student["id"], expires_at)
+    response = JSONResponse({"id": student["id"], "username": student["username"]})
+    response.set_cookie(
+        key="student_session_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=30 * 24 * 3600,
+    )
+    return response
+
+
+@app.post("/api/student/auth/logout")
+def api_student_logout(student_session_token: str | None = Cookie(default=None)):
+    if student_session_token:
+        delete_student_session(student_session_token)
+    response = JSONResponse({"ok": True})
+    response.delete_cookie("student_session_token", httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/api/student/auth/me")
+def api_student_me(student_session_token: str | None = Cookie(default=None)):
+    student = _validate_student_session(student_session_token)
+    if not student:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"id": student["id"], "username": student["username"]}
+
+
+@app.get("/api/student/session/{question_id}")
+def api_student_session(
+    question_id: str,
+    student_session_token: str | None = Cookie(default=None),
+):
+    student = _validate_student_session(student_session_token)
+    if not student:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    question = get_question(question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    session_id = get_or_create_question_session(student["id"], question_id)
+    return {"session_id": session_id}
 
 
 # ---- Auth API routes ----

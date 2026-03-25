@@ -43,6 +43,7 @@ A complete guide to using and understanding Essay Coach — the local web app th
 - [Phase 2 — Instructor Authentication](#phase-2--instructor-authentication)
 - [Phase 3 — Classes](#phase-3--classes)
 - [Phase 4 — Quantitative Scoring](#phase-4--quantitative-scoring)
+- [Phase 5 — Per-Student Analytics](#phase-5--per-student-analytics)
 
 ---
 
@@ -211,8 +212,34 @@ Each question card in the "Existing Questions" list has two buttons:
 Each question card shows:
 - A **class badge** indicating which class the question belongs to.
 - An **attempt count** (e.g., "5 attempts") — the total number of student submissions across all sessions.
+- An **Analytics** button that goes directly to the per-question session detail page.
 
-Use the **class filter** dropdown above the question list to view only questions from a specific class.
+Use the **class filter** dropdown above the question list to view only questions from a specific class. Below the dropdown, a row of class links lets you jump to the class-level analytics summary for any of your classes.
+
+#### Class Analytics Summary
+
+Click a class analytics link (or the **Analytics** button on any question card) to reach the class summary page at `/instructor/classes/{class_id}/analytics`. It shows one row per question with:
+
+| Column | Description |
+|--------|-------------|
+| **Sessions** | Number of distinct student browsers that submitted at least one attempt. |
+| **Avg attempts** | Mean number of attempts per session. |
+| **Avg score** | Mean final score across sessions (e.g., `7.1 / 10`). Shown only for scored questions; `—` otherwise. |
+| **Score distribution** | A color-coded bar split into red (< 40%), yellow (40–69%), and green (≥ 70%) segments, proportional to the number of sessions in each band. |
+
+Click **View →** on any row to drill into that question's session detail.
+
+#### Per-Question Session Detail
+
+The question detail page at `/instructor/analytics/{question_id}` shows one row per student session, sorted by most attempts first (most engaged students at the top). Three stat tiles at the top summarize the question overall: total sessions, average attempts, and average final score.
+
+Each row shows:
+- A truncated session ID (first 4 and last 4 characters of the UUID)
+- Attempt count
+- Score progression — the score earned on each attempt, joined with `→`, with the final value bolded (e.g., `5 → 7 → **9**`). Shows `—` for unscored questions.
+- Final score, color-coded green/yellow/red by the same thresholds as the distribution bar.
+
+Click **▶ Show answers** on any row to expand an inline panel showing each attempt's answer text. The AI's qualitative feedback is shown below the final attempt's answer.
 
 ### Managing the Invite Code
 
@@ -347,11 +374,13 @@ essay-coach/
 │   ├── style.css              # All styles (CSS custom properties, responsive grid)
 │   └── app.js                 # All client-side logic (student + instructor)
 ├── templates/
-│   ├── student.html           # Student landing/list/workspace (Jinja2, three modes)
-│   ├── instructor.html        # Instructor dashboard (Jinja2)
-│   ├── instructor-classes.html # Class management page (Jinja2)
-│   ├── login.html             # Instructor login form
-│   └── register.html          # Instructor registration form
+│   ├── student.html                      # Student landing/list/workspace (Jinja2, three modes)
+│   ├── instructor.html                   # Instructor dashboard (Jinja2)
+│   ├── instructor-classes.html           # Class management page (Jinja2)
+│   ├── instructor-analytics-class.html   # Class analytics summary page
+│   ├── instructor-analytics-question.html # Per-question session detail page
+│   ├── login.html                        # Instructor login form
+│   └── register.html                     # Instructor registration form
 ├── tests/                     # Test suite
 ├── requirements.txt           # Python dependencies
 ├── .env.example               # API key placeholder
@@ -433,6 +462,8 @@ Functions — classes:
 | `get_class_question_count(class_id)` | Total questions in a class. |
 | `update_class_student_code(class_id, new_code)` | Rotates the student access code. |
 | `update_class_instructor_code(class_id, new_code)` | Rotates the instructor invite code. |
+| `get_class_question_stats(class_id)` | Returns one dict per question with aggregate analytics: `total_sessions`, `avg_attempts`, `avg_final_score`, `max_total`, `score_buckets` (low/mid/high counts). Returns `[]` immediately if the class has no questions (avoids an empty `IN ()` SQLite clause). |
+| `get_question_session_stats(question_id)` | Returns one dict per student session: `attempt_count`, `score_progression` (list of per-attempt scores, `None` for unscored attempts), `final_score`, `max_total`, and the full `attempts` list. Sorted by `attempt_count` descending. |
 
 Functions — auth:
 
@@ -504,6 +535,8 @@ The FastAPI application. Routes are organized into groups:
 - `GET /student/{class_id}/{question_id}` → writing workspace (mode=`workspace`)
 - `GET /instructor` → instructor dashboard with class filter (redirects to `/login` if not authenticated)
 - `GET /instructor/classes` → class management page (redirects to `/login` if not authenticated)
+- `GET /instructor/classes/{class_id}/analytics` → class analytics summary (404 if class not found; 403 if not a member)
+- `GET /instructor/analytics/{question_id}` → per-question session detail (404 if question not found; 403 if not a member of the question's class)
 
 **Auth API routes**:
 - `POST /api/auth/register` → validates invite code, creates user and session
@@ -559,6 +592,7 @@ Vanilla CSS using custom properties (CSS variables) for theming. Key layout deci
 - Feedback background uses `--bg-subtle` (#f7f7f8) to visually distinguish it from the writing area.
 - Class badges (`.class-badge`) use a blue pill style (`#dbeafe` background, `#1d4ed8` text).
 - Score section (`.score-section`, `.score-total`, `.score-breakdown`, `.score-label`, `.score-fraction`) styles the score table shown below feedback.
+- Analytics pages (`.analytics-page`, `.analytics-table`, `.analytics-tiles`, `.analytics-tile`, `.score-dist-bar`, `.score-dist-seg`, `.score-high/mid/low`) style the class summary and session detail pages.
 - System font stack — no external fonts or CSS frameworks.
 
 ## The Feedback Engine
@@ -772,11 +806,6 @@ The instructor template receives `questions` (filtered to the instructor's class
 
 ## Extending the App
 
-### Per-Student Analytics
-- Add an instructor view that lists individual student sessions per question.
-- Show attempt-over-attempt improvement.
-- Allow instructors to read student answers and feedback (read-only).
-
 ### Multiple Student Sessions
 - Let students explicitly start a "new attempt session" for the same question.
 - Track separate revision chains.
@@ -926,3 +955,25 @@ The fourth phase added optional numeric scoring so students can track their prog
 - *Graceful degradation.* `generate_score()` returns `None` on any failure — bad JSON, schema mismatch, out-of-range values, or API error. The `score` SSE event is only emitted on success, so students never see an error from the scoring path.
 - *N ≥ 1 enforcement.* The regex `\[([1-9]\d*)\]` rejects `[0]` markers. Zero-point sections are meaningless for scoring and could confuse the LLM.
 - *Separate LLM call.* Scoring uses a different, tightly constrained system prompt from feedback. Mixing the two concerns in one call would make the prompt more fragile and harder to iterate on independently.
+
+## Phase 5 — Per-Student Analytics
+
+The fifth phase added read-only analytics pages for instructors, surfacing per-session engagement and score data already present in the `attempts` table — no new database tables required.
+
+**What was built:**
+- `get_class_question_stats(class_id)` in `db.py`: fetches all attempts for a class in one query, then groups and aggregates in Python. Returns per-question stats: distinct session count, average attempts per session, average final score, max score, and score bucket counts (low/mid/high).
+- `get_question_session_stats(question_id)` in `db.py`: fetches all attempts for a question and groups by `session_id`. Returns per-session data: attempt count, score progression (list of per-attempt scores), final score, and the full attempt list with student answers and AI feedback.
+- Two new HTML routes in `app.py`: `GET /instructor/classes/{class_id}/analytics` and `GET /instructor/analytics/{question_id}`. Both use the same `_validate_session` + redirect pattern as existing instructor HTML routes, and check class membership before rendering.
+- `instructor-analytics-class.html`: class summary table with a color-coded distribution bar (red/yellow/green segments, proportional to bucket counts using CSS flex).
+- `instructor-analytics-question.html`: per-session detail table with score progression, color-coded final scores, and a "Show answers" expand toggle. Inline `<script>` — no changes to `app.js`.
+- Analytics entry points in `instructor.html`: a class analytics link row below the class filter dropdown, and an **Analytics** button on each question card.
+- Analytics CSS appended to `static/style.css`.
+- `tests/test_analytics_integration.py`: 13 DB unit tests (including score bucket boundary cases at 0.40 and 0.70) and 8 FastAPI integration tests for auth, 404, 403, and 200 cases.
+
+**Key design decisions made in Phase 5:**
+- *No new tables.* All analytics data comes from the existing `attempts` table. `session_id` is already stored on every attempt, so "per student" analytics means "per session" — consistent with the app's no-login student model.
+- *Python-side aggregation.* Rather than complex SQL window functions or subqueries, the DB functions fetch rows and group them in Python using `defaultdict`. Simpler to test, easier to read, and fine for the expected data volume of a local tool.
+- *Truthy guard for score_data.* `if d.get("score_data"):` rather than `is not None` — matches the existing `get_attempts` pattern and handles empty strings left by some migration paths.
+- *Empty IN() guard.* `get_class_question_stats` returns `[]` immediately when a class has no questions. SQLite raises a syntax error on `WHERE question_id IN ()` with an empty list.
+- *Score progression preserves None.* Unscored attempts produce `None` entries in `score_progression` rather than being omitted, so the list length always equals `attempt_count` and the template can join all entries uniformly.
+- *Dedicated analytics pages.* Rather than a modal or inline expansion on the dashboard, analytics get their own bookmarkable URLs, following the same pattern as `/instructor/classes`.

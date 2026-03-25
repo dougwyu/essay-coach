@@ -33,6 +33,9 @@ async function submitForFeedback() {
 
     feedbackContent.innerHTML = '';
     feedbackSection.style.display = 'none';
+    const scoreSection = document.getElementById('score-section');
+    const scoreContent = document.getElementById('score-content');
+    if (scoreSection) { scoreSection.style.display = 'none'; scoreContent.innerHTML = ''; }
     indicator.style.display = 'flex';
 
     try {
@@ -72,6 +75,9 @@ async function submitForFeedback() {
                             document.getElementById('attempt-counter').textContent =
                                 `Attempt ${data.attempt_number}`;
                             loadAttemptHistory();
+                        }
+                        if (data.score) {
+                            renderScore(data.score);
                         }
                     } catch (e) {
                         // Skip malformed JSON
@@ -132,9 +138,17 @@ async function loadAttemptHistory() {
                     <h4>Feedback</h4>
                     <div>${formatFeedback(a.feedback || '')}</div>
                 </div>
+                <div class="score-section" style="display:none"><div class="score-content"></div></div>
             </div>
         </div>
     `).join('');
+
+    data.attempts.forEach((a, i) => {
+        if (a.score_data) {
+            const card = container.querySelectorAll('.history-item')[i];
+            renderScore(a.score_data, card);
+        }
+    });
 
     // Update attempt counter
     const counter = document.getElementById('attempt-counter');
@@ -159,6 +173,26 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function renderScore(scoreData, container = null) {
+    const section = container
+        ? container.querySelector('.score-section')
+        : document.getElementById('score-section');
+    const content = container
+        ? container.querySelector('.score-content')
+        : document.getElementById('score-content');
+    if (!section || !content) return;
+    const rows = scoreData.breakdown.map(item =>
+        `<tr>
+           <td class="score-label">${escapeHtml(item.label)}</td>
+           <td class="score-fraction">${item.awarded} / ${item.max}</td>
+         </tr>`
+    ).join('');
+    content.innerHTML =
+        `<div class="score-total">Score: ${scoreData.total_awarded} / ${scoreData.total_max}</div>` +
+        `<table class="score-breakdown">${rows}</table>`;
+    section.style.display = 'block';
 }
 
 // ============================================================

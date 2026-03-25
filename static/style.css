@@ -630,3 +630,41 @@ textarea {
         grid-template-columns: 1fr;
     }
 }
+
+/* ---- Scoring ---- */
+
+.score-section {
+    margin-top: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--bg-subtle);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.score-total {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.score-breakdown {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.score-breakdown tr + tr {
+    border-top: 1px solid var(--border);
+}
+
+.score-label {
+    padding: 0.35rem 0;
+    color: var(--text-muted);
+}
+
+.score-fraction {
+    padding: 0.35rem 0;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}

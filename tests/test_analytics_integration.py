@@ -6,6 +6,7 @@ from db import (
     create_question,
     create_attempt,
     get_class_question_stats,
+    get_question_session_stats,
 )
 from auth import hash_password
 import uuid
@@ -117,3 +118,83 @@ def test_class_stats_bucket_boundary_699():
     r = result[0]
     assert r["score_buckets"]["mid"] == 1
     assert r["score_buckets"]["high"] == 0
+
+
+# --- DB unit tests for get_question_session_stats ---
+
+def test_session_stats_single_attempt():
+    cid = _make_class()
+    qid = _make_question(cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1, {"breakdown": [], "total_awarded": 5, "total_max": 10})
+    result = get_question_session_stats(qid)
+    assert len(result) == 1
+    s = result[0]
+    assert s["attempt_count"] == 1
+    assert len(s["score_progression"]) == 1
+    assert s["score_progression"][0] == 5
+    assert s["final_score"] == 5
+
+
+def test_session_stats_multi_attempt_score_improvement():
+    cid = _make_class()
+    qid = _make_question(cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1, {"breakdown": [], "total_awarded": 3, "total_max": 10})
+    _make_attempt(qid, sid, 2, {"breakdown": [], "total_awarded": 7, "total_max": 10})
+    _make_attempt(qid, sid, 3, {"breakdown": [], "total_awarded": 9, "total_max": 10})
+    result = get_question_session_stats(qid)
+    assert len(result) == 1
+    s = result[0]
+    assert s["attempt_count"] == 3
+    assert s["score_progression"] == [3, 7, 9]
+    assert s["final_score"] == 9
+
+
+def test_session_stats_no_score_data():
+    cid = _make_class()
+    qid = _make_question(cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1)
+    _make_attempt(qid, sid, 2)
+    result = get_question_session_stats(qid)
+    s = result[0]
+    assert all(v is None for v in s["score_progression"])
+    assert s["final_score"] is None
+    assert s["max_total"] is None
+
+
+def test_session_stats_sort_order():
+    """Session with more attempts appears first."""
+    cid = _make_class()
+    qid = _make_question(cid)
+    sid1 = str(uuid.uuid4())
+    sid2 = str(uuid.uuid4())
+    _make_attempt(qid, sid1, 1)
+    _make_attempt(qid, sid2, 1)
+    _make_attempt(qid, sid2, 2)
+    _make_attempt(qid, sid2, 3)
+    result = get_question_session_stats(qid)
+    assert result[0]["attempt_count"] == 3
+    assert result[1]["attempt_count"] == 1
+
+
+def test_session_stats_attempts_ascending_order():
+    """attempts list within a session is in ascending attempt_number order."""
+    cid = _make_class()
+    qid = _make_question(cid)
+    sid = str(uuid.uuid4())
+    _make_attempt(qid, sid, 1, {"breakdown": [], "total_awarded": 3, "total_max": 10})
+    _make_attempt(qid, sid, 2, {"breakdown": [], "total_awarded": 7, "total_max": 10})
+    result = get_question_session_stats(qid)
+    atts = result[0]["attempts"]
+    assert atts[0]["attempt_number"] == 1
+    assert atts[1]["attempt_number"] == 2
+
+
+def test_session_stats_no_sessions():
+    """Question with no attempts returns empty list."""
+    cid = _make_class()
+    qid = _make_question(cid)
+    result = get_question_session_stats(qid)
+    assert result == []

@@ -526,3 +526,56 @@ def get_class_question_stats(class_id: str) -> list[dict]:
         })
 
     return result
+
+
+def get_question_session_stats(question_id: str) -> list[dict]:
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM attempts WHERE question_id = ? ORDER BY session_id, attempt_number",
+        (question_id,),
+    ).fetchall()
+    conn.close()
+
+    sessions: dict = defaultdict(list)
+    for row in rows:
+        d = dict(row)
+        if d.get("score_data"):
+            d["score_data"] = json.loads(d["score_data"])
+        sessions[d["session_id"]].append(d)
+
+    result = []
+    for session_id, atts in sessions.items():
+        score_progression = []
+        max_total = None
+        for a in atts:
+            sd = a.get("score_data")
+            if sd:
+                score_progression.append(sd["total_awarded"])
+                if max_total is None:
+                    max_total = sd["total_max"]
+            else:
+                score_progression.append(None)
+
+        last = atts[-1]
+        last_sd = last.get("score_data")
+        final_score = last_sd["total_awarded"] if last_sd else None
+
+        result.append({
+            "session_id": session_id,
+            "attempt_count": len(atts),
+            "score_progression": score_progression,
+            "final_score": final_score,
+            "max_total": max_total,
+            "attempts": [
+                {
+                    "attempt_number": a["attempt_number"],
+                    "student_answer": a["student_answer"],
+                    "feedback": a.get("feedback"),
+                    "score_data": a.get("score_data"),
+                }
+                for a in atts
+            ],
+        })
+
+    result.sort(key=lambda s: s["attempt_count"], reverse=True)
+    return result

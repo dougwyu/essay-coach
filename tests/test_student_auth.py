@@ -13,6 +13,8 @@ from db import (
     update_student_session_expiry,
     delete_student_session,
     get_or_create_question_session,
+    start_new_question_session,
+    list_question_sessions,
     create_class,
     create_question,
 )
@@ -231,3 +233,82 @@ def test_valid_session_slides_window(client, tmp_path):
     conn.close()
     after = row_after[0]
     assert after > before
+
+
+# --- Migration test (does NOT use fresh_db autouse fixture) ---
+
+@pytest.fixture
+def old_schema_db(tmp_path, monkeypatch):
+    """Creates a database with the old student_question_sessions schema (no session_number)."""
+    db_path = str(tmp_path / "old.db")
+    monkeypatch.setattr("config.DATABASE_PATH", db_path)
+    monkeypatch.setattr("db.DATABASE_PATH", db_path)
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE student_users (
+            id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE questions (
+            id TEXT PRIMARY KEY, title TEXT NOT NULL, prompt TEXT NOT NULL,
+            model_answer TEXT NOT NULL, rubric TEXT, class_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE student_question_sessions (
+            id TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL, question_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(student_id, question_id)
+        );
+        INSERT INTO student_question_sessions (id, student_id, question_id)
+            VALUES ('old-session-id', 'student-1', 'question-1');
+    """)
+    conn.close()
+    yield db_path
+
+
+def test_migration_adds_session_number(old_schema_db):
+    init_db()
+    conn = sqlite3.connect(old_schema_db)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(student_question_sessions)").fetchall()]
+    assert "session_number" in cols
+    row = conn.execute(
+        "SELECT session_number FROM student_question_sessions WHERE id = 'old-session-id'"
+    ).fetchone()
+    assert row[0] == 1
+    conn.close()
+
+
+# --- Multi-session DB tests ---
+
+def test_start_new_session_returns_different_id():
+    cid = _make_class()
+    qid = _make_question(cid)
+    uid = create_student_user("alice", "alice@example.com", hash_password("p"))
+    sid1 = get_or_create_question_session(uid, qid)
+    sid2, num = start_new_question_session(uid, qid)
+    assert sid1 != sid2
+    assert num == 2
+
+
+def test_list_question_sessions_returns_all():
+    cid = _make_class()
+    qid = _make_question(cid)
+    uid = create_student_user("alice", "alice@example.com", hash_password("p"))
+    get_or_create_question_session(uid, qid)
+    start_new_question_session(uid, qid)
+    sessions = list_question_sessions(uid, qid)
+    assert len(sessions) == 2
+    assert sessions[0]["session_number"] == 1
+    assert sessions[1]["session_number"] == 2
+
+
+def test_get_or_create_returns_latest_after_new():
+    cid = _make_class()
+    qid = _make_question(cid)
+    uid = create_student_user("alice", "alice@example.com", hash_password("p"))
+    get_or_create_question_session(uid, qid)
+    sid2, _ = start_new_question_session(uid, qid)
+    active = get_or_create_question_session(uid, qid)
+    assert active == sid2

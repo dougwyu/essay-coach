@@ -82,11 +82,35 @@ def init_db():
             id TEXT PRIMARY KEY,
             student_id TEXT NOT NULL REFERENCES student_users(id) ON DELETE CASCADE,
             question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+            session_number INTEGER NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(student_id, question_id)
+            UNIQUE(student_id, question_id, session_number)
         );
         DELETE FROM sessions WHERE expires_at < datetime('now');
     """)
+
+    # Migration: add session_number to student_question_sessions (table rebuild required for SQLite)
+    sq_cols = [r[1] for r in conn.execute("PRAGMA table_info(student_question_sessions)").fetchall()]
+    if "session_number" not in sq_cols:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("""
+            CREATE TABLE student_question_sessions_new (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL REFERENCES student_users(id) ON DELETE CASCADE,
+                question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                session_number INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, question_id, session_number)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO student_question_sessions_new (id, student_id, question_id, session_number, created_at)
+                SELECT id, student_id, question_id, 1, created_at FROM student_question_sessions
+        """)
+        conn.execute("DROP TABLE student_question_sessions")
+        conn.execute("ALTER TABLE student_question_sessions_new RENAME TO student_question_sessions")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
 
     # Add class_id column to questions if it doesn't exist yet (migration for pre-Phase-3 DBs)
     existing_cols = [
@@ -680,19 +704,55 @@ def delete_student_session(token: str) -> None:
 
 
 def get_or_create_question_session(student_id: str, question_id: str) -> str:
-    """Return the session UUID for (student_id, question_id), creating it if needed.
-    Uses INSERT OR IGNORE + SELECT to be idempotent and race-safe."""
-    sid = str(uuid.uuid4())
+    """Return the active (latest) session UUID for (student_id, question_id), creating session_number=1 if none exists.
+    SQLite serialises all writes so SELECT-then-INSERT is safe within a single connection."""
     conn = _connect()
-    conn.execute(
-        "INSERT OR IGNORE INTO student_question_sessions (id, student_id, question_id)"
-        " VALUES (?, ?, ?)",
-        (sid, student_id, question_id),
-    )
-    conn.commit()
     row = conn.execute(
-        "SELECT id FROM student_question_sessions WHERE student_id = ? AND question_id = ?",
+        "SELECT id FROM student_question_sessions WHERE student_id = ? AND question_id = ?"
+        " ORDER BY session_number DESC LIMIT 1",
         (student_id, question_id),
     ).fetchone()
+    if row:
+        conn.close()
+        return row["id"]
+    sid = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO student_question_sessions (id, student_id, question_id, session_number)"
+        " VALUES (?, ?, ?, ?)",
+        (sid, student_id, question_id, 1),
+    )
+    conn.commit()
     conn.close()
-    return row["id"]
+    return sid
+
+
+def start_new_question_session(student_id: str, question_id: str) -> tuple[str, int]:
+    """Create the next session for (student_id, question_id) and return (session_id, session_number)."""
+    sid = str(uuid.uuid4())
+    conn = _connect()
+    row = conn.execute(
+        "SELECT MAX(session_number) as max_num FROM student_question_sessions"
+        " WHERE student_id = ? AND question_id = ?",
+        (student_id, question_id),
+    ).fetchone()
+    next_num = (row["max_num"] or 0) + 1
+    conn.execute(
+        "INSERT INTO student_question_sessions (id, student_id, question_id, session_number)"
+        " VALUES (?, ?, ?, ?)",
+        (sid, student_id, question_id, next_num),
+    )
+    conn.commit()
+    conn.close()
+    return sid, next_num
+
+
+def list_question_sessions(student_id: str, question_id: str) -> list[dict]:
+    """Return all sessions for (student_id, question_id) ordered oldest-first."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT id, session_number FROM student_question_sessions"
+        " WHERE student_id = ? AND question_id = ? ORDER BY session_number ASC",
+        (student_id, question_id),
+    ).fetchall()
+    conn.close()
+    return [{"session_id": row["id"], "session_number": row["session_number"]} for row in rows]

@@ -463,3 +463,13 @@ def test_class_export_no_questions(client):
 
     r_json = client.get(f"/instructor/classes/{cid}/analytics/export?format=json")
     assert r_json.json() == []
+
+
+def test_question_export_unknown_format_returns_csv(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    qid = _make_question_via_api(client, cid)
+
+    r = client.get(f"/instructor/analytics/{qid}/export?format=bogus")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]

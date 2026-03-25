@@ -7,9 +7,12 @@ from db import (
     create_attempt,
     get_class_question_stats,
     get_question_session_stats,
+    get_setting,
 )
 from auth import hash_password
 import uuid
+from fastapi.testclient import TestClient
+from app import app as fastapi_app
 
 
 @pytest.fixture(autouse=True)
@@ -198,3 +201,94 @@ def test_session_stats_no_sessions():
     qid = _make_question(cid)
     result = get_question_session_stats(qid)
     assert result == []
+
+
+@pytest.fixture
+def client():
+    with TestClient(fastapi_app, raise_server_exceptions=True) as c:
+        yield c
+
+
+def _register_and_login(client, username="alice"):
+    invite = get_setting("invite_code")
+    client.post("/api/auth/register", json={
+        "username": username, "password": "password123", "invite_code": invite,
+    })
+
+
+def _make_class_via_api(client, name="BIO101"):
+    res = client.post("/api/classes", json={"name": name})
+    return res.json()["class_id"]
+
+
+def _make_question_via_api(client, class_id):
+    res = client.post("/api/questions", json={
+        "title": "Photosynthesis", "prompt": "Explain it.",
+        "model_answer": "Plants make food. [5]", "rubric": "", "class_id": class_id,
+    })
+    return res.json()["id"]
+
+
+# ---- Route integration tests ----
+
+def test_class_analytics_redirects_if_unauthenticated(client):
+    cid = "some-class-id"
+    res = client.get(f"/instructor/classes/{cid}/analytics", follow_redirects=False)
+    assert res.status_code == 302
+    assert "/login" in res.headers["location"]
+
+
+def test_class_analytics_404_if_class_not_found(client):
+    _register_and_login(client)
+    res = client.get("/instructor/classes/nonexistent-id/analytics")
+    assert res.status_code == 404
+
+
+def test_class_analytics_403_if_not_member(client):
+    _register_and_login(client, "alice")
+    from db import create_class, create_user, add_class_member
+    from auth import hash_password
+    bob_id = create_user("bob2", hash_password("password123"))
+    cid = create_class("Bob class", "SBOB0001", "IBOB0001", bob_id)
+    add_class_member(cid, bob_id)
+    res = client.get(f"/instructor/classes/{cid}/analytics")
+    assert res.status_code == 403
+
+
+def test_class_analytics_200_for_member(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    res = client.get(f"/instructor/classes/{cid}/analytics")
+    assert res.status_code == 200
+
+
+def test_question_analytics_redirects_if_unauthenticated(client):
+    res = client.get("/instructor/analytics/some-question-id", follow_redirects=False)
+    assert res.status_code == 302
+    assert "/login" in res.headers["location"]
+
+
+def test_question_analytics_404_if_question_not_found(client):
+    _register_and_login(client)
+    res = client.get("/instructor/analytics/nonexistent-id")
+    assert res.status_code == 404
+
+
+def test_question_analytics_403_if_not_member(client):
+    _register_and_login(client, "alice")
+    from db import create_class, create_question, create_user, add_class_member
+    from auth import hash_password
+    bob_id = create_user("bob2", hash_password("password123"))
+    cid = create_class("Bob class", "SBOB0002", "IBOB0002", bob_id)
+    add_class_member(cid, bob_id)
+    qid = create_question("Q", "P", "A", None, cid)
+    res = client.get(f"/instructor/analytics/{qid}")
+    assert res.status_code == 403
+
+
+def test_question_analytics_200_for_member(client):
+    _register_and_login(client)
+    cid = _make_class_via_api(client)
+    qid = _make_question_via_api(client, cid)
+    res = client.get(f"/instructor/analytics/{qid}")
+    assert res.status_code == 200

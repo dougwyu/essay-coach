@@ -727,7 +727,8 @@ def get_or_create_question_session(student_id: str, question_id: str) -> str:
 
 
 def start_new_question_session(student_id: str, question_id: str) -> tuple[str, int]:
-    """Create the next session for (student_id, question_id) and return (session_id, session_number)."""
+    """Create the next session for (student_id, question_id) and return (session_id, session_number).
+    Assumes at least one session already exists for the pair; if none exists, session_number will be 1."""
     sid = str(uuid.uuid4())
     conn = _connect()
     row = conn.execute(

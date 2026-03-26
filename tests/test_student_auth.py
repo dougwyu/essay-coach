@@ -312,3 +312,90 @@ def test_get_or_create_returns_latest_after_new():
     sid2, _ = start_new_question_session(uid, qid)
     active = get_or_create_question_session(uid, qid)
     assert active == sid2
+
+
+# --- Multi-session HTTP tests ---
+
+def test_api_start_new_session_returns_different_id(client):
+    _register(client)
+    cid = _make_class()
+    qid = _make_question(cid)
+    first = client.get(f"/api/student/session/{qid}").json()["session_id"]
+    res = client.post(f"/api/student/session/{qid}/new")
+    assert res.status_code == 200
+    data = res.json()
+    assert "session_id" in data
+    assert data["session_id"] != first
+
+
+def test_api_start_new_session_increments_number(client):
+    _register(client)
+    cid = _make_class()
+    qid = _make_question(cid)
+    client.get(f"/api/student/session/{qid}")  # creates session_number=1
+    res = client.post(f"/api/student/session/{qid}/new")
+    assert res.json()["session_number"] == 2
+
+
+def test_api_list_sessions_returns_all_in_order(client):
+    _register(client)
+    cid = _make_class()
+    qid = _make_question(cid)
+    client.get(f"/api/student/session/{qid}")       # session 1
+    client.post(f"/api/student/session/{qid}/new")  # session 2
+    res = client.get(f"/api/student/session/{qid}/list")
+    assert res.status_code == 200
+    sessions = res.json()
+    assert len(sessions) == 2
+    assert sessions[0]["session_number"] == 1
+    assert sessions[1]["session_number"] == 2
+
+
+def test_api_active_session_is_latest(client):
+    _register(client)
+    cid = _make_class()
+    qid = _make_question(cid)
+    client.get(f"/api/student/session/{qid}")           # session 1
+    new_data = client.post(f"/api/student/session/{qid}/new").json()  # session 2
+    active = client.get(f"/api/student/session/{qid}").json()["session_id"]
+    assert active == new_data["session_id"]
+
+
+def test_api_attempts_isolated_between_sessions(client):
+    _register(client)
+    cid = _make_class()
+    qid = _make_question(cid)
+    sid1 = client.get(f"/api/student/session/{qid}").json()["session_id"]
+    sid2 = client.post(f"/api/student/session/{qid}/new").json()["session_id"]
+    # Fetch attempts for session2 — must be empty (no submissions yet)
+    res = client.get(f"/api/attempts/{qid}?session_id={sid2}")
+    assert res.status_code == 200
+    assert res.json()["attempts"] == []
+    # Fetch attempts for session1 — also empty, but returns its own list
+    res1 = client.get(f"/api/attempts/{qid}?session_id={sid1}")
+    assert res1.status_code == 200
+    assert res1.json()["attempts"] == []
+
+
+def test_api_list_sessions_empty_returns_200(client):
+    _register(client)
+    cid = _make_class()
+    qid = _make_question(cid)
+    # Do NOT call GET /api/student/session/{qid} — that would create a session
+    res = client.get(f"/api/student/session/{qid}/list")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+def test_api_new_session_unauthenticated_returns_401(client):
+    cid = _make_class()
+    qid = _make_question(cid)
+    res = client.post(f"/api/student/session/{qid}/new")
+    assert res.status_code == 401
+
+
+def test_api_list_sessions_unauthenticated_returns_401(client):
+    cid = _make_class()
+    qid = _make_question(cid)
+    res = client.get(f"/api/student/session/{qid}/list")
+    assert res.status_code == 401

@@ -57,6 +57,8 @@ from db import (
     update_student_session_expiry,
     delete_student_session,
     get_or_create_question_session,
+    start_new_question_session,
+    list_question_sessions,
 )
 from dependencies import _validate_session, require_instructor_api, require_class_member
 from export_utils import format_question_export, format_class_export
@@ -400,6 +402,35 @@ def api_student_me(student_session_token: str | None = Cookie(default=None)):
     if not student:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {"id": student["id"], "username": student["username"]}
+
+
+@app.post("/api/student/session/{question_id}/new")
+def api_student_session_new(
+    question_id: str,
+    student_session_token: str | None = Cookie(default=None),
+):
+    student = _validate_student_session(student_session_token)
+    if not student:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    question = get_question(question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    session_id, session_number = start_new_question_session(student["id"], question_id)
+    return {"session_id": session_id, "session_number": session_number}
+
+
+@app.get("/api/student/session/{question_id}/list")
+def api_student_session_list(
+    question_id: str,
+    student_session_token: str | None = Cookie(default=None),
+):
+    student = _validate_student_session(student_session_token)
+    if not student:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    question = get_question(question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return list_question_sessions(student["id"], question_id)
 
 
 @app.get("/api/student/session/{question_id}")

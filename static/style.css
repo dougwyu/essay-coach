@@ -903,3 +903,34 @@ textarea {
     background: #dbeafe;
     border-color: #93c5fd;
 }
+
+/* Session groups (multi-session history) */
+.session-group {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+}
+
+.session-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    background: var(--bg-subtle);
+    font-size: 0.85rem;
+}
+
+.session-group-header:hover {
+    background: var(--border);
+}
+
+.session-group-body {
+    display: none;
+    padding: 0.75rem;
+}
+
+.session-group.expanded .session-group-body {
+    display: block;
+}

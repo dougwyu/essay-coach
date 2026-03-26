@@ -96,6 +96,9 @@
 <main class="workspace">
     <div class="workspace-left">
         <div id="student-identity" style="font-size:0.85rem; color:var(--text-muted); margin-bottom:0.5rem;"></div>
+        <button id="new-session-btn" class="btn btn-secondary"
+                style="font-size:0.8rem; margin-bottom:0.5rem; display:none;"
+                onclick="startNewSession()">Start new session</button>
         <div class="prompt-section">
             <h2>{{ question.title }}</h2>
             <div class="essay-prompt">{{ question.prompt }}</div>

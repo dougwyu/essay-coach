@@ -14,6 +14,8 @@ function getSessionId() {
 
 // Module-level resolved session ID for this page load
 let _resolvedSessionId = null;
+// Module-level session list for logged-in students (null = anonymous/not fetched)
+let _allSessions = null;
 
 async function initStudent() {
     // Try to get a server-managed session_id for logged-in students
@@ -31,12 +33,44 @@ async function initStudent() {
                     `Already signed in as <strong>${escapeHtml(student.username)}</strong> &nbsp;·&nbsp; ` +
                     `<a href="#" onclick="studentSignOut(); return false;">Sign out</a>`;
             }
+            // Load all sessions for grouped history
+            const listRes = await fetch(`/api/student/session/${QUESTION_ID}/list`);
+            if (listRes.ok) {
+                _allSessions = await listRes.json();
+            } else {
+                _allSessions = [];
+            }
+            document.getElementById('new-session-btn').style.display = '';
         }
     } else {
         // Anonymous fallback
         _resolvedSessionId = getSessionId();
     }
     loadAttemptHistory();
+}
+
+async function startNewSession() {
+    const btn = document.getElementById('new-session-btn');
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/api/student/session/${QUESTION_ID}/new`, { method: 'POST' });
+        if (!res.ok) return;
+        const data = await res.json();
+        _resolvedSessionId = data.session_id;
+        if (_allSessions !== null) {
+            _allSessions.push({ session_id: data.session_id, session_number: data.session_number });
+        }
+        // Clear workspace for fresh start
+        document.getElementById('student-answer').value = '';
+        const feedbackSection = document.getElementById('feedback-section');
+        if (feedbackSection) feedbackSection.style.display = 'none';
+        const scoreSection = document.getElementById('score-section');
+        if (scoreSection) scoreSection.style.display = 'none';
+        document.getElementById('attempt-counter').textContent = '';
+        loadAttemptHistory();
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 async function submitForFeedback() {
@@ -135,48 +169,102 @@ function formatFeedback(text) {
 
 async function loadAttemptHistory() {
     if (typeof QUESTION_ID === 'undefined') return;
-
-    const res = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${_resolvedSessionId}`);
-    const data = await res.json();
     const container = document.getElementById('history-content');
     if (!container) return;
 
-    if (data.attempts.length === 0) {
-        container.innerHTML = '<p class="empty-state">No previous attempts yet.</p>';
-        return;
-    }
-
-    container.innerHTML = data.attempts.map((a, i) => `
-        <div class="history-item">
-            <div class="history-item-header" onclick="this.parentElement.classList.toggle('expanded')">
-                <strong>Attempt ${a.attempt_number}</strong>
-                <span class="history-date">${new Date(a.created_at).toLocaleString()}</span>
-            </div>
-            <div class="history-item-body">
-                <div class="history-answer">
-                    <h4>Your Answer</h4>
-                    <p>${escapeHtml(a.student_answer)}</p>
-                </div>
-                <div class="history-feedback">
-                    <h4>Feedback</h4>
-                    <div>${formatFeedback(a.feedback || '')}</div>
-                </div>
-                <div class="score-section" style="display:none"><div class="score-content"></div></div>
-            </div>
-        </div>
-    `).join('');
-
-    data.attempts.forEach((a, i) => {
-        if (a.score_data) {
-            const card = container.querySelectorAll('.history-item')[i];
-            renderScore(a.score_data, card);
+    if (_allSessions !== null) {
+        // Authenticated path: render grouped by session
+        if (_allSessions.length === 0) {
+            container.innerHTML = '<p class="empty-state">No previous attempts yet.</p>';
+            document.getElementById('attempt-counter').textContent = '';
+            return;
         }
-    });
-
-    // Update attempt counter
-    const counter = document.getElementById('attempt-counter');
-    if (counter) {
-        counter.textContent = `${data.attempts.length} previous attempt${data.attempts.length !== 1 ? 's' : ''}`;
+        const sessionsCopy = [..._allSessions].reverse(); // newest first
+        const groups = await Promise.all(sessionsCopy.map(async (s) => {
+            const r = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${s.session_id}`);
+            const d = await r.json();
+            return { ...s, attempts: d.attempts };
+        }));
+        container.innerHTML = groups.map(g => {
+            const isActive = g.session_id === _resolvedSessionId;
+            const label = isActive
+                ? `Session ${g.session_number} (active)`
+                : `Session ${g.session_number} \u2014 ${g.attempts.length} attempt${g.attempts.length !== 1 ? 's' : ''}`;
+            const attemptsHtml = g.attempts.length === 0
+                ? '<p class="empty-state" style="margin:0.5rem 0 0 0;">No attempts yet.</p>'
+                : g.attempts.map(a => `
+                    <div class="history-item">
+                        <div class="history-item-header" onclick="this.parentElement.classList.toggle('expanded')">
+                            <strong>Attempt ${a.attempt_number}</strong>
+                            <span class="history-date">${new Date(a.created_at).toLocaleString()}</span>
+                        </div>
+                        <div class="history-item-body">
+                            <div class="history-answer"><h4>Your Answer</h4><p>${escapeHtml(a.student_answer)}</p></div>
+                            <div class="history-feedback"><h4>Feedback</h4><div>${formatFeedback(a.feedback || '')}</div></div>
+                            <div class="score-section" style="display:none"><div class="score-content"></div></div>
+                        </div>
+                    </div>`).join('');
+            return `<div class="session-group${isActive ? ' expanded' : ''}">
+                <div class="session-group-header" onclick="this.parentElement.classList.toggle('expanded')">
+                    <strong>${label}</strong>
+                </div>
+                <div class="session-group-body">${attemptsHtml}</div>
+            </div>`;
+        }).join('');
+        // Render scores inside each session group
+        groups.forEach((g, gi) => {
+            const groupEl = container.querySelectorAll('.session-group')[gi];
+            g.attempts.forEach((a, ai) => {
+                if (a.score_data) {
+                    const card = groupEl.querySelectorAll('.history-item')[ai];
+                    if (card) renderScore(a.score_data, card);
+                }
+            });
+        });
+        // Update attempt counter for active session
+        const activeGroup = groups.find(g => g.session_id === _resolvedSessionId);
+        const counter = document.getElementById('attempt-counter');
+        if (counter && activeGroup) {
+            const n = activeGroup.attempts.length;
+            counter.textContent = n > 0 ? `${n} previous attempt${n !== 1 ? 's' : ''}` : '';
+        }
+    } else {
+        // Anonymous path: flat list (unchanged behaviour)
+        const res = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${_resolvedSessionId}`);
+        const data = await res.json();
+        if (data.attempts.length === 0) {
+            container.innerHTML = '<p class="empty-state">No previous attempts yet.</p>';
+            return;
+        }
+        container.innerHTML = data.attempts.map((a, i) => `
+            <div class="history-item">
+                <div class="history-item-header" onclick="this.parentElement.classList.toggle('expanded')">
+                    <strong>Attempt ${a.attempt_number}</strong>
+                    <span class="history-date">${new Date(a.created_at).toLocaleString()}</span>
+                </div>
+                <div class="history-item-body">
+                    <div class="history-answer">
+                        <h4>Your Answer</h4>
+                        <p>${escapeHtml(a.student_answer)}</p>
+                    </div>
+                    <div class="history-feedback">
+                        <h4>Feedback</h4>
+                        <div>${formatFeedback(a.feedback || '')}</div>
+                    </div>
+                    <div class="score-section" style="display:none"><div class="score-content"></div></div>
+                </div>
+            </div>
+        `).join('');
+        data.attempts.forEach((a, i) => {
+            if (a.score_data) {
+                const card = container.querySelectorAll('.history-item')[i];
+                renderScore(a.score_data, card);
+            }
+        });
+        const counter = document.getElementById('attempt-counter');
+        if (counter) {
+            counter.textContent = `${data.attempts.length} previous attempt${data.attempts.length !== 1 ? 's' : ''}`;
+        }
     }
 }
 

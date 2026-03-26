@@ -1,6 +1,10 @@
 # Essay Coach
 
-A local web application that helps university students iteratively improve essay answers through structured AI feedback. Instructors create classes, set questions with model answers, and share a class code with students. The AI compares student work against the hidden model answers and returns directional feedback. Multiple instructors can run separate classes on a single instance.
+A local web application that helps university students iteratively improve essay answers through structured AI feedback. Instructors create classes, set questions with model answers, and share a class code with students. The AI compares student work against the hidden model answers and returns directional feedback. The student never sees the model answer. Multiple instructors can run separate classes on a single instance. 
+
+The goal of Essay Coach is to help students 'learn the shape' of a good answer to an exam essay question. Essay Coach is not designed to be used for real exams, nor is it for teaching how to write well. It automates formative feedback, not summative feedback. 
+
+The approach is to give the students access to last year's exam questions (or mock questions) at the beginning of term so that the students can practice answering questions during the term. I hypothesise that this will help the students 'learn how to learn' the material, ultimately helping them do better on the exam. I also hypothesise that Essay Coach will need to be introduced in a workshop, so that the students who need it the most are exposed. 
 
 ## Setup
 
@@ -51,4 +55,4 @@ The development workflow was powered by the **[Superpowers](https://github.com/o
 claude plugin install superpowers@claude-plugins-official
 ```
 
-Superpowers is in the [Claude plugin store](https://claude.com/plugins/superpowers).
+Superpowers is described in the [Claude plugin store](https://claude.com/plugins/superpowers).

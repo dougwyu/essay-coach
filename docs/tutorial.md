@@ -388,6 +388,8 @@ If you want to start over on a question from scratch — a fresh attempt chain w
 
 Revision history groups attempts by session. Click a session header to expand or collapse it. This lets you compare different revision chains side by side.
 
+![Grouped session history](images/student-session-history.png)
+
 **Note:** The **Start new session** button is only available when you're signed in to a student account. Anonymous users have a single session per question per browser.
 
 ---

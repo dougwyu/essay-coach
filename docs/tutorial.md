@@ -112,6 +112,8 @@ Additional instructors can register using the same invite code. Once registered,
 
 Navigate to `http://localhost:8000/instructor`. If you're not logged in, you'll be redirected to `/login` automatically. Enter your username and password and click **Sign In**.
 
+![Instructor login page](images/instructor-login.png)
+
 ### Managing Classes
 
 Classes are the top-level organizing unit. Each class has its own set of questions and two access codes: one for students and one for instructors to join.
@@ -128,6 +130,8 @@ Classes are the top-level organizing unit. Each class has its own set of questio
 - **Instructor Invite Code** (8 characters): Share this with co-instructors who already have an instructor account. They click **Join a Class** on the Manage Classes page and enter this code.
 
 You can rotate either code at any time by clicking **Rotate** next to it. The old code stops working immediately.
+
+![Class management page](images/instructor-classes.png)
 
 #### Joining an Existing Class
 
@@ -231,6 +235,8 @@ Click a class analytics link (or the **Analytics** button on any question card) 
 
 Click **View →** on any row to drill into that question's session detail.
 
+![Class analytics summary](images/instructor-analytics-class.png)
+
 #### Per-Question Session Detail
 
 The question detail page at `/instructor/analytics/{question_id}` shows one row per student session, sorted by most attempts first (most engaged students at the top). Three stat tiles at the top summarize the question overall: total sessions, average attempts, and average final score.
@@ -241,7 +247,11 @@ Each row shows:
 - Score progression — the score earned on each attempt, joined with `→`, with the final value bolded (e.g., `5 → 7 → **9**`). Shows `—` for unscored questions.
 - Final score, color-coded green/yellow/red by the same thresholds as the distribution bar.
 
+![Per-question session detail](images/instructor-analytics-question.png)
+
 Click **▶ Show answers** on any row to expand an inline panel showing each attempt's answer text. The AI's qualitative feedback is shown below the final attempt's answer.
+
+![Session with answers expanded](images/instructor-analytics-answers.png)
 
 #### Exporting Data
 
@@ -251,6 +261,8 @@ Both analytics pages have **Download** links in the top-right corner of the head
 - **Question detail page** — one row per attempt, with columns: `session_id`, `attempt_number`, `student_answer`, `feedback`, `score_awarded`, `max_score`.
 
 Unscored questions have empty cells for score columns rather than null values, so the files open cleanly in Excel or Google Sheets without mixed-type columns.
+
+![Export download links](images/instructor-analytics-export.png)
 
 ### Managing the Invite Code
 
@@ -279,6 +291,8 @@ Click **Sign Out** in the top-right of the instructor dashboard. Your session is
 3. Click **Continue**. If the code is valid, you'll be taken to your class's question list. If not, an error message appears.
 
 Your class is remembered in your browser. On your next visit, you'll be taken directly to the question list without re-entering the code.
+
+![Student class code entry](images/student-landing.png)
 
 To switch to a different class, click **Switch class** in the top navigation. This clears the stored class and returns you to the code entry form.
 
@@ -328,6 +342,8 @@ If the instructor added point values to their model answer, a score table appear
 
 Scores are stored with each attempt and visible in your revision history.
 
+![AI feedback with score](images/student-feedback-scored.png)
+
 ### Revising Your Answer
 
 After reading the feedback:
@@ -340,6 +356,8 @@ After reading the feedback:
    - If your answer is very close to the model answer, the AI will say so and suggest minor polish.
 
 There is no limit on how many times you can revise and resubmit.
+
+![Feedback showing progress from previous attempt](images/student-revision.png)
 
 ### Using Revision History
 

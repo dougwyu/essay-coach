@@ -54,7 +54,7 @@ async function startNewSession() {
     btn.disabled = true;
     try {
         const res = await fetch(`/api/student/session/${QUESTION_ID}/new`, { method: 'POST' });
-        if (!res.ok) return;
+        if (!res.ok) { console.error('startNewSession failed:', res.status); return; }
         const data = await res.json();
         _resolvedSessionId = data.session_id;
         if (_allSessions !== null) {
@@ -184,7 +184,7 @@ async function loadAttemptHistory() {
         try {
             groups = await Promise.all(sessionsCopy.map(async (s) => {
                 const r = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${s.session_id}`);
-                const d = await r.json();
+                const d = r.ok ? await r.json() : { attempts: [] };
                 return { ...s, attempts: d.attempts };
             }));
         } catch (e) {

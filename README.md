@@ -41,4 +41,14 @@ This program is free software: you can redistribute it and/or modify it under th
 
 ## Built With
 
-This application was built entirely by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool. Claude Code generated the full stack — backend, frontend, database schema, AI feedback engine, tests, and documentation — from a single architectural prompt.
+This application was built by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool. Claude Code generated the full stack — backend, frontend, database schema, AI feedback engine, tests, and documentation — from a single architectural prompt.
+
+The development workflow was powered by the **[Superpowers](https://github.com/obra/superpowers)** plugin for Claude Code. Superpowers adds structured, skill-based workflows on top of Claude Code: brainstorming sessions that turn ideas into reviewed design specs, plan documents with bite-sized TDD steps, and subagent-driven execution where a fresh Claude subagent handles each task and two-stage review (spec compliance, then code quality) gates every merge. The result is a disciplined, reviewable process that produces better code with fewer regressions than ad-hoc prompting.
+
+**Install Superpowers** (run this in your terminal, not inside Claude Code):
+
+```bash
+claude plugin install superpowers@claude-plugins-official
+```
+
+Superpowers is also available in the [Claude plugin store](https://claude.com/plugins/superpowers).

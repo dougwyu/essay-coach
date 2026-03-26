@@ -873,7 +873,19 @@ The instructor template receives `questions` (filtered to the instructor's class
 
 # Part 3: Development History
 
-Essay Coach was built entirely by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool, across four development phases. Each phase started with a design spec, produced an implementation plan, and was executed task-by-task using the subagent-driven development workflow: a fresh Claude subagent per task, two-stage review (spec compliance, then code quality) after each, and a final review across the whole implementation before merging.
+Essay Coach was built by [Claude Code](https://claude.ai/claude-code), Anthropic's agentic coding tool, across four development phases. Each phase started with a design spec, produced an implementation plan, and was executed task-by-task using the subagent-driven development workflow: a fresh Claude subagent per task, two-stage review (spec compliance, then code quality) after each, and a final review across the whole implementation before merging.
+
+## Superpowers
+
+The structured workflow described above — brainstorming into specs, specs into plans, plans into subagent-driven execution with per-task review — comes from the **[Superpowers](https://github.com/obra/superpowers)** plugin for Claude Code. Superpowers adds skill-based workflows that turn ad-hoc prompting into a disciplined, reviewable process. Each skill is a plain markdown file describing a procedure (brainstorming, writing plans, executing plans, TDD, code review) that Claude follows step by step.
+
+To use Superpowers on your own Claude Code projects, install it from your terminal (not inside Claude Code):
+
+```bash
+claude plugin install superpowers@claude-plugins-official
+```
+
+Superpowers is also available directly from the [Claude plugin store](https://claude.com/plugins/superpowers).
 
 ## Phase 1 — Core App
 

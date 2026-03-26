@@ -6,3 +6,4 @@ __pycache__/
 .worktrees/
 .superpowers/
 .claude/settings.local.json
+docs/it-kickoff-email.md

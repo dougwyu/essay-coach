@@ -367,14 +367,25 @@ def test_api_attempts_isolated_between_sessions(client):
     qid = _make_question(cid)
     sid1 = client.get(f"/api/student/session/{qid}").json()["session_id"]
     sid2 = client.post(f"/api/student/session/{qid}/new").json()["session_id"]
-    # Fetch attempts for session2 — must be empty (no submissions yet)
-    res = client.get(f"/api/attempts/{qid}?session_id={sid2}")
-    assert res.status_code == 200
-    assert res.json()["attempts"] == []
-    # Fetch attempts for session1 — also empty, but returns its own list
+    # Insert a real attempt directly into the DB for session 1
+    from db import _connect
+    conn = _connect()
+    import uuid as _uuid
+    conn.execute(
+        "INSERT INTO attempts (id, question_id, session_id, student_answer, feedback, attempt_number)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (str(_uuid.uuid4()), qid, sid1, "My answer", "Some feedback", 1),
+    )
+    conn.commit()
+    conn.close()
+    # Session 1 should show the attempt
     res1 = client.get(f"/api/attempts/{qid}?session_id={sid1}")
     assert res1.status_code == 200
-    assert res1.json()["attempts"] == []
+    assert len(res1.json()["attempts"]) == 1
+    # Session 2 must NOT show session 1's attempt
+    res2 = client.get(f"/api/attempts/{qid}?session_id={sid2}")
+    assert res2.status_code == 200
+    assert res2.json()["attempts"] == []
 
 
 def test_api_list_sessions_empty_returns_200(client):
@@ -399,3 +410,15 @@ def test_api_list_sessions_unauthenticated_returns_401(client):
     qid = _make_question(cid)
     res = client.get(f"/api/student/session/{qid}/list")
     assert res.status_code == 401
+
+
+def test_api_new_session_unknown_question_returns_404(client):
+    _register(client)
+    res = client.post("/api/student/session/nonexistent-id/new")
+    assert res.status_code == 404
+
+
+def test_api_list_sessions_unknown_question_returns_404(client):
+    _register(client)
+    res = client.get("/api/student/session/nonexistent-id/list")
+    assert res.status_code == 404

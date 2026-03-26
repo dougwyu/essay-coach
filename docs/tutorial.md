@@ -857,10 +857,24 @@ The instructor template receives `questions` (filtered to the instructor's class
 
 ## Extending the App
 
-### Ideas
-- **File upload**: Accept essay uploads (`.txt`, `.docx`) in addition to paste.
-- **Custom LLM settings**: Let instructors adjust feedback tone, max tokens, or model.
-- **Plagiarism detection**: Compare submissions across students.
+### Product features
+- **Student dashboard** — logged-in students see all their classes and submission history in one place (currently history is per-question only); note that students currently have to re-enter their class code on each new device since class enrollment is stored in localStorage, not their account
+- **Class enrollment persistence** — save a student's class associations to their account rather than localStorage, so they survive device switches
+- **Password reset** — "forgot password" email flow; shares the email provider dependency with email verification
+- **Email verification** — confirm email on registration; shares the email provider dependency with password reset
+- **File upload** — accept `.txt`/`.docx` answer uploads in addition to paste
+- **Custom LLM settings** — let instructors adjust feedback tone, verbosity, or model per class or question
+- **Plagiarism detection** — flag suspiciously similar submissions across students in the same class
+
+### Quality / ops
+- **Deployment** — host on Railway, Fly.io, or similar; the app is a single Python process with a SQLite file, which maps cleanly to a single-instance PaaS deployment
+- **Admin tools** — invite code management, user list, and class overview for a super-admin role; currently all managed via CLI or direct database access
+- **Rate limiting** — the `/api/feedback` endpoint calls the Anthropic API with no per-user throttling; important before any public deployment
+
+### Polish
+- **Front-end design** — improve the visual design using Claude's [frontend-design plugin](https://claude.com/plugins/frontend-design)
+- **Mobile layout** — the student workspace uses a fixed split layout that is functional but not optimized for small screens
+- **Question ordering** — instructors cannot reorder questions within a class; currently displayed in creation order
 
 ---
 

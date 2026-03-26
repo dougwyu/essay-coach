@@ -885,7 +885,7 @@ To use Superpowers on your own Claude Code projects, install it from your termin
 claude plugin install superpowers@claude-plugins-official
 ```
 
-Superpowers is also available directly from the [Claude plugin store](https://claude.com/plugins/superpowers).
+Superpowers is in the [Claude plugin store](https://claude.com/plugins/superpowers).
 
 ## Phase 1 — Core App
 

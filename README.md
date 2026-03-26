@@ -51,4 +51,4 @@ The development workflow was powered by the **[Superpowers](https://github.com/o
 claude plugin install superpowers@claude-plugins-official
 ```
 
-Superpowers is also available in the [Claude plugin store](https://claude.com/plugins/superpowers).
+Superpowers is in the [Claude plugin store](https://claude.com/plugins/superpowers).

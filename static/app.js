@@ -180,11 +180,17 @@ async function loadAttemptHistory() {
             return;
         }
         const sessionsCopy = [..._allSessions].reverse(); // newest first
-        const groups = await Promise.all(sessionsCopy.map(async (s) => {
-            const r = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${s.session_id}`);
-            const d = await r.json();
-            return { ...s, attempts: d.attempts };
-        }));
+        let groups;
+        try {
+            groups = await Promise.all(sessionsCopy.map(async (s) => {
+                const r = await fetch(`/api/attempts/${QUESTION_ID}?session_id=${s.session_id}`);
+                const d = await r.json();
+                return { ...s, attempts: d.attempts };
+            }));
+        } catch (e) {
+            container.innerHTML = '<p class="empty-state">Could not load history. Please refresh.</p>';
+            return;
+        }
         container.innerHTML = groups.map(g => {
             const isActive = g.session_id === _resolvedSessionId;
             const label = isActive

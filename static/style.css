@@ -189,11 +189,18 @@ textarea {
 }
 
 /* Workspace (student) */
+.workspace-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 57px);
+}
+
 .workspace {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0;
-    height: calc(100vh - 57px);
+    flex: 1;
+    min-height: 0;
 }
 
 .workspace-left {

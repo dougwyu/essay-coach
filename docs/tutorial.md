@@ -284,11 +284,22 @@ Click **Sign Out** in the top-right of the instructor dashboard. Your session is
 
 ## For Students
 
+### Creating an Account (Optional)
+
+When you navigate to `http://localhost:8000/student`, you'll first see an auth panel. You can:
+
+- **Sign in** — enter your username and password, then click **Sign in**.
+- **Create account** — enter a username, email, and password (minimum 8 characters), then click **Create account**.
+- **Continue anonymously** — click the "Continue anonymously" link to skip login.
+
+If you create an account, your revision history is tied to your login and persists across browsers and devices. Anonymous use is fully supported but history is stored only in the current browser's local storage — clearing browser data loses it.
+
 ### Entering Your Class Code
 
-1. Go to `http://localhost:8000/student`.
-2. You'll see a class code entry form. Enter the 8-character code your instructor gave you (not case-sensitive — the app uppercases it automatically).
-3. Click **Continue**. If the code is valid, you'll be taken to your class's question list. If not, an error message appears.
+After signing in (or choosing anonymous), you'll be prompted for your class code.
+
+1. Enter the 8-character code your instructor gave you (not case-sensitive — the app uppercases it automatically).
+2. Click **Continue**. If the code is valid, you'll be taken to your class's question list. If not, an error message appears.
 
 Your class is remembered in your browser. On your next visit, you'll be taken directly to the question list without re-entering the code.
 
@@ -369,7 +380,15 @@ Below the workspace, there's a **Show Revision History** toggle. Click it to exp
 
 Click any attempt's header to expand or collapse it. This helps you track your progress and see how your answer has evolved across revisions.
 
-**Note:** Your attempts are tracked by a session ID stored in your browser's local storage. If you clear your browser data or switch browsers, you'll start fresh with no history.
+**Note:** If you're signed in, your history is tied to your account and persists across browsers. If you're anonymous, attempts are tracked by a session ID in your browser's local storage — clearing browser data or switching browsers starts fresh.
+
+### Starting a New Session
+
+If you want to start over on a question from scratch — a fresh attempt chain with no prior history — click **Start new session** in the top-left of the workspace. This creates a new independent session for that question. Your previous sessions are not deleted; they remain archived in your revision history.
+
+Revision history groups attempts by session. Click a session header to expand or collapse it. This lets you compare different revision chains side by side.
+
+**Note:** The **Start new session** button is only available when you're signed in to a student account. Anonymous users have a single session per question per browser.
 
 ---
 
@@ -836,15 +855,10 @@ The instructor template receives `questions` (filtered to the instructor's class
 
 ## Extending the App
 
-### Multiple Student Sessions
-- Let students explicitly start a "new attempt session" for the same question.
-- Track separate revision chains.
-
-### Other Ideas
+### Ideas
 - **File upload**: Accept essay uploads (`.txt`, `.docx`) in addition to paste.
 - **Custom LLM settings**: Let instructors adjust feedback tone, max tokens, or model.
 - **Plagiarism detection**: Compare submissions across students.
-- **Student accounts**: Optional login for students to preserve history across browsers.
 
 ---
 
@@ -1036,3 +1050,48 @@ The sixth phase added CSV and JSON download links to both analytics pages, letti
 - *Empty string instead of null for unscored fields.* Both CSV and JSON output use `""` for missing scores so spreadsheet tools don't encounter mixed-type columns.
 - *Extension derived from media_type.* The `_make_export_response` helper reads the actual `media_type` returned by the formatter to set the filename extension, eliminating any possibility of a mismatch between file contents and filename.
 - *Silent CSV fallback.* Unknown `format` values produce CSV output without raising a 400, keeping the API forgiving for future format additions.
+
+## Phase 7 — Student Accounts
+
+The seventh phase added optional student login so students can preserve their revision history across browsers and devices.
+
+**What was built:**
+- `student_users` and `student_sessions` tables in `db.py`, with functions: `create_student_user`, `get_student_by_username`, `get_student_by_email`, `get_student_by_id`, `create_student_session`, `get_student_session`, `update_student_session_expiry`, `delete_student_session`.
+- `auth.py` extended with `hash_password` and `verify_password` (bcrypt via passlib, already present for instructor auth).
+- Four new API routes in `app.py`: `POST /api/student/auth/register`, `POST /api/student/auth/login`, `GET /api/student/auth/me`, `POST /api/student/auth/logout`.
+- `_validate_student_session` helper in `app.py` that validates the `student_session_token` cookie and applies sliding-window expiry (7-day extension on each authenticated request).
+- Rewritten student landing page in `student.html`: a two-step flow — auth panel (sign in / create account / continue anonymously) followed by the class code panel.
+- `initStudentLanding()` in `app.js`: shows student identity in the class code panel; wires the auth buttons.
+- `student-identity` display in the workspace showing the logged-in username (or "anonymous").
+- An idempotent `init_db()` migration that adds `student_users` and `student_sessions` tables to existing databases.
+- `tests/test_student_auth.py`: 18 integration tests covering register, login, logout, `/me`, session expiry, and sliding-window extension.
+
+**Key design decisions made in Phase 7:**
+- *Opt-in login.* Anonymous use remains fully supported. Students who don't log in get a UUID-based session in `localStorage` exactly as before — nothing regresses.
+- *HttpOnly cookie sessions.* The `student_session_token` cookie is HttpOnly, preventing XSS-based theft.
+- *Sliding-window expiry.* Each authenticated request extends the session by 7 days, so active students stay logged in indefinitely without a hard timeout.
+- *Separate student and instructor session tables.* Student sessions use `student_sessions`; instructor sessions use `sessions`. The two auth paths are independent and don't share middleware.
+
+## Phase 8 — Multiple Student Sessions
+
+The eighth phase let students explicitly start a fresh revision chain for the same question, with old sessions archived and viewable.
+
+**What was built:**
+- `session_number INTEGER NOT NULL DEFAULT 1` column added to `student_question_sessions` via a SQLite table-rebuild migration in `init_db()` (SQLite cannot drop constraints directly; the migration creates a new table, copies rows, drops the old, renames the new). Existing rows are assigned `session_number = 1`.
+- Updated `get_or_create_question_session` in `db.py` to return the latest session (by `session_number DESC`) rather than relying on the old unique constraint.
+- `start_new_question_session(student_id, question_id) -> tuple[str, int]` in `db.py`: inserts a new session row with `MAX(session_number) + 1`.
+- `list_question_sessions(student_id, question_id) -> list[dict]` in `db.py`: returns all sessions for a student/question pair, ordered by `session_number ASC`.
+- Two new API routes in `app.py` (registered before `GET /{question_id}` to avoid route collision): `POST /api/student/session/{question_id}/new` and `GET /api/student/session/{question_id}/list`. Both require student auth.
+- `start-new-session` button in `student.html` workspace, hidden by default, shown only for authenticated students.
+- `_allSessions` sentinel in `app.js` (`null` = anonymous/unfetched, `[]` = authenticated with no sessions yet) to distinguish the anonymous and authenticated paths cleanly.
+- `startNewSession()` in `app.js`: calls `POST /new`, updates `_resolvedSessionId` and `_allSessions`, re-renders history.
+- Rewritten `loadAttemptHistory()` in `app.js`: authenticated path fetches all sessions via `GET /list`, then fetches per-session attempts in parallel with `Promise.all`, and renders collapsible session groups. Anonymous path renders a flat attempt list as before.
+- Session group CSS in `style.css`: `.session-group`, `.session-group-header`, `.session-group-body`, `.session-group.expanded`.
+- 14 new tests appended to `tests/test_student_auth.py` covering DB functions, HTTP routes, auth guards, 404 cases, and attempt isolation between sessions.
+
+**Key design decisions made in Phase 8:**
+- *Student-controlled sessions.* Only the student can start a new session — instructors have no control over this. The button only appears for logged-in students.
+- *Append-only, latest-wins.* No `is_active` flag. The active session is always the one with the highest `session_number`. This avoids update races and keeps the schema simple.
+- *Sessions are isolated.* Attempts are scoped to `session_id`. A new session starts with zero attempts — previous sessions' history is visible but does not affect the AI's feedback for the new chain.
+- *SQLite table-rebuild migration.* The old schema had `UNIQUE(student_id, question_id)`; the new schema needs `UNIQUE(student_id, question_id, session_number)`. Since SQLite cannot drop constraints via `ALTER TABLE`, the migration rebuilds the table. `PRAGMA foreign_keys = OFF` guards against orphaned-row errors in test scenarios.
+- *`Promise.all` for parallel fetches.* History renders by fetching all session attempt lists concurrently rather than sequentially, with per-fetch error handling so a single failed request doesn't blank the entire history panel.

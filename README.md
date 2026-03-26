@@ -15,7 +15,7 @@ python app.py         # runs on localhost:8000
 ## Usage
 
 - **Instructor view** (`/instructor`): Create and manage classes and essay questions. Requires login — register at `/register` using the invite code printed in the terminal on first startup. Go to **Manage Classes** to create a class and get its student access code.
-- **Student view** (`/student`): Enter your class code, select a question, write an answer, and receive structured AI feedback. Revise and resubmit to improve. No login required.
+- **Student view** (`/student`): Optionally sign in or create an account, enter your class code, select a question, write an answer, and receive structured AI feedback. Revise and resubmit to improve. Login is optional — anonymous use is supported, but a student account preserves history across browsers and devices.
 - **Analytics** (`/instructor/classes/{id}/analytics`): Per-class summary showing sessions, average attempts, average score, and a score distribution bar for each question. Drill into any question for per-session detail — attempt counts, score progression, and expandable student answers. Download links on each analytics page export session data as CSV or JSON.
 
 ## How Feedback Works

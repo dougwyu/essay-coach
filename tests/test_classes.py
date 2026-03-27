@@ -1,5 +1,5 @@
 import pytest
-import db as db_module
+import config as config_module
 from db import init_db, create_question, get_question, list_questions
 from db import (
     create_class,
@@ -19,7 +19,7 @@ from db import (
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield
 
@@ -27,7 +27,7 @@ def fresh_db(tmp_path, monkeypatch):
 def test_classes_table_exists():
     """init_db creates the classes table."""
     import sqlite3
-    conn = sqlite3.connect(db_module.DATABASE_PATH)
+    conn = sqlite3.connect(config_module.DATABASE_PATH)
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='classes'"
     ).fetchone()
@@ -37,7 +37,7 @@ def test_classes_table_exists():
 
 def test_class_members_table_exists():
     import sqlite3
-    conn = sqlite3.connect(db_module.DATABASE_PATH)
+    conn = sqlite3.connect(config_module.DATABASE_PATH)
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='class_members'"
     ).fetchone()
@@ -47,7 +47,7 @@ def test_class_members_table_exists():
 
 def test_questions_has_class_id_column():
     import sqlite3
-    conn = sqlite3.connect(db_module.DATABASE_PATH)
+    conn = sqlite3.connect(config_module.DATABASE_PATH)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(questions)").fetchall()]
     conn.close()
     assert "class_id" in cols
@@ -57,7 +57,7 @@ def test_migration_assigns_default_class_to_existing_questions(tmp_path, monkeyp
     """Simulates a pre-Phase-3 DB: questions without class_id get assigned to Default class."""
     import sqlite3
     db_path = str(tmp_path / "migrate.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
 
     # Create old schema (no class_id on questions, no classes table)
     conn = sqlite3.connect(db_path)
@@ -104,7 +104,7 @@ def test_migration_idempotent(tmp_path, monkeypatch):
     """Running init_db() twice after a migration creates exactly one Default class, not two."""
     import sqlite3
     db_path = str(tmp_path / "idem.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
 
     # Build old-schema DB with orphan questions (same as migration test)
     conn = sqlite3.connect(db_path)

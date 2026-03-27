@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import db as db_module
+import config as config_module
 from app import app
 from db import init_db, get_setting, create_class, add_class_member
 
@@ -9,7 +9,7 @@ from db import init_db, get_setting, create_class, add_class_member
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield
 
@@ -208,7 +208,7 @@ def test_instructor_page_includes_classes(client):
 def test_migration_assigns_default_class(tmp_path, monkeypatch):
     import sqlite3
     db_path = str(tmp_path / "migrate.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
 
     # Build old-schema DB
     conn = sqlite3.connect(db_path)

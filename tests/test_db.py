@@ -1,5 +1,5 @@
 import pytest
-import db as db_module
+import config as config_module
 from db import (
     init_db,
     create_question,
@@ -19,7 +19,7 @@ DUMMY_CLASS_ID = "00000000-0000-0000-0000-000000000001"
 def test_db(tmp_path, monkeypatch):
     import sqlite3
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     # Insert a dummy class so FK constraint is satisfied
     conn = sqlite3.connect(db_path)

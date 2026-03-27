@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import pytest
+import config as config_module
 from db import (
     init_db,
     create_class,
@@ -22,8 +23,7 @@ from app import app as fastapi_app
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr("config.DATABASE_PATH", db_path)
-    monkeypatch.setattr("db.DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield
 

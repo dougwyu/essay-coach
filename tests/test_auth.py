@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 
-import db as db_module
+import config as config_module
 from db import (
     init_db,
     create_user,
@@ -20,7 +20,7 @@ from db import (
 @pytest.fixture(autouse=True)
 def test_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield db_path
 

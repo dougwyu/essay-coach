@@ -1,0 +1,62 @@
+services:
+
+  app:
+    build: .
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    # Port not exposed directly — nginx proxies to it
+    expose:
+      - "8000"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: essay_coach
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d essay_coach"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # IT team mounts the university TLS cert here:
+      - /etc/ssl/essay-coach:/etc/ssl/essay-coach:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # Ollama — only started when the "ollama" profile is active:
+  #   docker compose --profile ollama up -d
+  ollama:
+    image: ollama/ollama
+    profiles:
+      - ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # Add GPU access if available on the host:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  pgdata:
+  ollama_data:

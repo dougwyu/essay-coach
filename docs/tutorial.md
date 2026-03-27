@@ -1010,7 +1010,9 @@ Superpowers is in the [Claude plugin store](https://claude.com/plugins/superpowe
 
 ## Phase 1 — Core App
 
-The first phase built the essential product from scratch: a working feedback loop between students and an AI coach.
+The first phase built the essential product from scratch: a working feedback loop between students and an AI coach. The original prompt was:
+
+"i want to make a webapp that runs locally on my university's servers.  the app gives a student structured feedback on their answer to essay questions, and the app has access to model answers written by the class instructor (the student does not have access to the model answer). the idea is for the student to repeatedly revise their answer, using the feedback, and thereby learn the "shape of a good answer". this practice would help them learn how to study for the real essay questions in an exam (where the app would not be available). help me design such an app, starting with a structured prompt to Claude Code"
 
 **What was built:**
 - The SQLite schema (`questions`, `attempts`) and all query functions in `db.py`.

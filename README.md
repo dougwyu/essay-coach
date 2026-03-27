@@ -6,6 +6,8 @@ The goal of Essay Coach is to help students 'learn the shape' of a good answer t
 
 The approach is to give the students access to last year's exam questions (or mock questions) at the beginning of term so that the students can practice answering questions during the term. I hypothesise that this will help the students 'learn how to learn' the material, ultimately helping them do better on the exam. I also hypothesise that Essay Coach will need to be introduced in a workshop, so that the students who need it the most are at least exposed to it. You can lead a horse to water... 
 
+![Essay Coach Infographic](essaycoachinfographic_notebookLM_20270327.png)
+
 ## Setup
 
 This version assumes that you have a Claude API key, which is available for purchase at [Claude Dashboard](https://platform.claude.com/dashboard). Future versions will allow substitution with a locally running LLM like ollama or deepseek.

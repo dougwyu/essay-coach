@@ -46,6 +46,9 @@ A complete guide to using and understanding Essay Coach — the local web app th
 - [Phase 4 — Quantitative Scoring](#phase-4--quantitative-scoring)
 - [Phase 5 — Per-Student Analytics](#phase-5--per-student-analytics)
 - [Phase 6 — Analytics Export](#phase-6--analytics-export)
+- [Phase 7 — Student Accounts](#phase-7--student-accounts)
+- [Phase 8 — Multiple Student Sessions](#phase-8--multiple-student-sessions)
+- [Phase 9 — Production Deployment](#phase-9--production-deployment)
 
 ---
 
@@ -53,7 +56,9 @@ A complete guide to using and understanding Essay Coach — the local web app th
 
 ## Quick Setup
 
-You need Python 3.9+ and an Anthropic API key.
+### Local development
+
+You need Python 3.9+ and either an Anthropic API key or a running [Ollama](https://ollama.com) instance.
 
 ```bash
 # Clone or navigate to the project
@@ -62,17 +67,26 @@ cd essay-coach
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure your API key
+# Configure your environment
 cp .env.example .env
 ```
 
-Open `.env` in any text editor and replace the placeholder with your actual key:
+Open `.env` and configure it:
 
+**Option A — Anthropic Claude API (default)**
 ```
+LLM_BACKEND=anthropic
 ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
 ```
-
 You can get an API key at [console.anthropic.com](https://console.anthropic.com). The Anthropic API has its own billing — it is separate from a Claude Pro subscription.
+
+**Option B — Local Ollama**
+```
+LLM_BACKEND=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.3:70b
+```
+Install Ollama from [ollama.com](https://ollama.com) and pull your chosen model (`ollama pull llama3.3:70b`) before starting the app.
 
 Start the server:
 
@@ -84,6 +98,22 @@ The app runs at **http://localhost:8000**. Open it in your browser.
 
 - **Students** go to: `http://localhost:8000/student`
 - **Instructors** go to: `http://localhost:8000/instructor` (login required)
+
+### Production deployment (Docker)
+
+For a production deployment (PostgreSQL + Nginx reverse proxy):
+
+```bash
+cp .env.example .env   # fill in all credentials
+docker compose up -d
+```
+
+To also run a local Ollama instance:
+```bash
+docker compose --profile ollama up -d
+```
+
+See [Architecture Overview](#architecture-overview) and [Extending the App](#extending-the-app) for deployment details.
 
 ---
 
@@ -401,14 +431,18 @@ Revision history groups attempts by session. Click a session header to expand or
 Essay Coach is a deliberately simple stack:
 
 ```
-Browser (vanilla JS) ←→ FastAPI (Python) ←→ SQLite + Anthropic API
+Browser (vanilla JS) ←→ FastAPI (Python) ←→ SQLite or PostgreSQL
+                                          ←→ Anthropic API or Ollama
 ```
 
 - **Backend**: FastAPI serves both HTML pages (via Jinja2 templates) and a JSON/SSE API.
 - **Frontend**: Plain HTML, CSS, and JavaScript — no framework, no build step.
-- **Database**: SQLite, stored as a single file (`essay_coach.db`).
-- **AI**: Anthropic Python SDK, calling `claude-sonnet-4-20250514` with streaming.
-- **Auth**: Server-side sessions stored in SQLite. Passwords hashed with bcrypt via passlib. Instructor registration gated by invite code.
+- **Database**: SQLite by default (`essay_coach.db`); PostgreSQL when `DATABASE_URL` is set. `db_connection.py` provides a thin abstraction layer that makes the rest of the code database-agnostic.
+- **AI**: Switchable backend via `LLM_BACKEND` env var. `anthropic` (default) uses the Anthropic Python SDK with streaming; `ollama` uses Ollama's OpenAI-compatible `/v1/chat/completions` endpoint via `httpx`.
+- **Auth**: Server-side sessions stored in the database. Passwords hashed with bcrypt via passlib. Instructor registration gated by invite code.
+- **Production stack**: Docker Compose with four services — `app` (FastAPI on port 8000), `db` (postgres:16-alpine), `nginx` (reverse proxy with TLS termination and SSE support), and `ollama` (optional, profile-gated).
+
+**Configuration is entirely via environment variables.** See `.env.example` for the full list.
 
 ## Project Structure
 
@@ -417,10 +451,14 @@ essay-coach/
 ├── app.py                     # FastAPI app — all routes (HTML + API)
 ├── auth.py                    # Pure crypto: password hashing, token/code generation
 ├── dependencies.py            # FastAPI auth dependencies
-├── feedback.py                # LLM prompt construction and streaming API call
-├── db.py                      # SQLite schema, connection, and query functions
+├── feedback.py                # LLM prompt construction and streaming; Anthropic + Ollama backends
+├── db.py                      # Database schema and query functions (SQLite + PostgreSQL)
+├── db_connection.py           # Database abstraction layer (SQLite/PostgreSQL via DATABASE_URL)
 ├── export_utils.py            # CSV/JSON formatting helpers for analytics export
 ├── config.py                  # Environment variables and settings
+├── Dockerfile                 # Production container image
+├── docker-compose.yml         # Production stack: app, db, nginx, ollama (profile-gated)
+├── nginx.conf                 # Reverse proxy config: TLS, SSE support, rate limiting
 ├── static/
 │   ├── style.css              # All styles (CSS custom properties, responsive grid)
 │   └── app.js                 # All client-side logic (student + instructor)
@@ -434,7 +472,11 @@ essay-coach/
 │   └── register.html                     # Instructor registration form
 ├── tests/                     # Test suite
 ├── requirements.txt           # Python dependencies
-├── .env.example               # API key placeholder
+├── .env.example               # Environment variable reference with all options
+├── scripts/
+│   ├── migrate_to_postgres.py           # One-time SQLite → PostgreSQL migration
+│   ├── seed_screenshots.py              # Dev helper: seed sample data for screenshots
+│   └── seed_screenshots_quickstart.md  # How to use seed_screenshots.py
 └── docs/
     └── tutorial.md            # This file
 ```
@@ -443,11 +485,15 @@ essay-coach/
 
 ### `config.py`
 
-Loads environment variables from `.env` using `python-dotenv`. Exposes three settings:
+Loads environment variables from `.env` using `python-dotenv`. Exposes:
 
-- `ANTHROPIC_API_KEY` — required for the AI feedback to work.
-- `DATABASE_PATH` — defaults to `essay_coach.db` in the project root.
-- `MODEL_NAME` — hardcoded to `claude-sonnet-4-20250514`.
+- `ANTHROPIC_API_KEY` — required when `LLM_BACKEND=anthropic`.
+- `DATABASE_PATH` — SQLite file path; defaults to `essay_coach.db`. Ignored when `DATABASE_URL` is set.
+- `DATABASE_URL` — PostgreSQL connection string (e.g. `postgresql://user:pass@db/essay_coach`). When set, the app uses PostgreSQL instead of SQLite.
+- `LLM_BACKEND` — `anthropic` (default) or `ollama`.
+- `OLLAMA_BASE_URL` — Ollama server URL; defaults to `http://ollama:11434`.
+- `OLLAMA_MODEL` — model to use with Ollama; defaults to `llama3.3:70b`.
+- `MODEL_NAME` — Anthropic model ID; hardcoded to `claude-sonnet-4-20250514`.
 
 ### `auth.py`
 
@@ -471,16 +517,29 @@ FastAPI auth dependencies used by instructor-protected routes.
 
 The `GET /instructor` HTML route imports `_validate_session` directly to redirect to `/login` on failure instead of returning a 401.
 
+### `db_connection.py`
+
+A thin abstraction layer that makes the rest of the codebase database-agnostic.
+
+- `IS_POSTGRES` — a module-level flag set at import time from `DATABASE_URL`. All other modules import this to branch on SQL dialect differences.
+- `get_conn()` — returns either a `_SQLiteConn` or a `_PGConn` depending on `IS_POSTGRES`.
+- `_SQLiteConn` — wraps `sqlite3`, converting `%s` placeholders to `?` before execution and returning `dict`-like rows from `fetchone`/`fetchall`. Also exposes `execute_raw()` for PRAGMA statements that bypass placeholder conversion.
+- `_PGConn` — wraps `psycopg2` with `RealDictCursor`, so rows are plain dicts. Uses `%s` natively.
+
+Both wrappers expose the same interface: `execute(sql, params)`, `fetchone()`, `fetchall()`, `commit()`, `close()`, and `__enter__`/`__exit__` for context manager use.
+
+**Why the `%s` convention?** `db.py` was originally SQLite-only (using `?`). The abstraction layer lets `db.py` use `%s` throughout — the SQLiteConn wrapper converts them to `?` transparently, while PostgreSQL uses `%s` natively.
+
 ### `db.py`
 
-Manages all SQLite interactions. Key design decisions:
+Manages all database interactions. Works with both SQLite (via `db_connection._SQLiteConn`) and PostgreSQL (via `db_connection._PGConn`). Key design decisions:
 
-- Uses `sqlite3.Row` as the row factory so query results behave like dictionaries.
-- Enables foreign keys with `PRAGMA foreign_keys = ON`.
-- Questions, users, and classes use UUID primary keys (generated in Python, not by SQLite).
+- Query results behave like dictionaries in both backends: SQLite rows are wrapped by `_SQLiteConn`; PostgreSQL uses `RealDictCursor`.
+- Foreign keys are enforced: `PRAGMA foreign_keys = ON` for SQLite; PostgreSQL enforces them natively.
+- Questions, users, and classes use UUID primary keys (generated in Python).
 - `ON DELETE CASCADE` on attempts (via questions), sessions (via users), and class membership (via both users and classes).
-- Every function opens and closes its own connection. This is simple but not suitable for high concurrency — fine for a local tool.
-- On startup, `init_db()` creates all tables, runs the migration if needed, deletes expired sessions, and seeds the invite code if absent.
+- Every function opens and closes its own connection. Simple but not suitable for high concurrency — fine for a local or departmental tool.
+- On startup, `init_db()` creates all tables, runs migrations if needed, deletes expired sessions, and seeds the invite code if absent. For PostgreSQL, `_init_db_postgres()` runs a clean `CREATE TABLE IF NOT EXISTS` path — no SQLite-specific migrations.
 
 Functions — questions and attempts:
 
@@ -533,7 +592,9 @@ Functions — auth:
 
 #### Migration
 
-`init_db()` handles existing databases from earlier phases:
+When using PostgreSQL (`IS_POSTGRES=True`), `init_db()` calls `_init_db_postgres()` which runs a clean `CREATE TABLE IF NOT EXISTS` path — no ALTER TABLE migrations are needed since PostgreSQL databases are always fresh on first deploy. To migrate an existing SQLite database to PostgreSQL, run `scripts/migrate_to_postgres.py`.
+
+When using SQLite, `init_db()` handles existing databases from earlier phases:
 
 **Phase 3 migration** (pre-classes databases):
 1. If `questions` has no `class_id` column, `ALTER TABLE` adds one (nullable, because SQLite cannot add a NOT NULL column without a default).
@@ -547,9 +608,9 @@ Both migrations are idempotent — they only run when the target column is absen
 
 ### `feedback.py`
 
-The core of the app. Key functions:
+The core of the app. Handles LLM communication for both the Anthropic and Ollama backends. Key functions:
 
-**`build_messages(...)`** constructs the user message sent to Claude. The model answer and rubric are embedded in XML-delimited blocks that the LLM can reference:
+**`build_messages(...)`** constructs the user message sent to the LLM. The model answer and rubric are embedded in XML-delimited blocks:
 
 ```xml
 <model_answer>...</model_answer>
@@ -558,9 +619,13 @@ The core of the app. Key functions:
 <previous_feedback>...</previous_feedback>
 ```
 
-**`generate_feedback_stream(...)`** creates an async Anthropic client and streams the response. It yields text chunks as they arrive, which the API endpoint forwards to the browser via SSE.
+**`generate_feedback_stream(...)`** dispatches to the active backend:
+- `LLM_BACKEND=anthropic`: creates an async Anthropic client and streams the response using the Anthropic Python SDK.
+- `LLM_BACKEND=ollama`: streams from `OLLAMA_BASE_URL/v1/chat/completions` using `httpx.AsyncClient`, consuming the OpenAI-compatible SSE stream.
 
-The feedback system prompt is embedded as a constant at the top of the file. It instructs the LLM to:
+Both paths yield text chunks as they arrive, which the API endpoint forwards to the browser via SSE.
+
+The feedback system prompt instructs the LLM to:
 1. Never reveal the model answer's content directly.
 2. Structure feedback into Coverage, Depth, Structure, Accuracy, and Progress sections.
 3. Scale specificity with attempt number (broad early, targeted later).
@@ -570,7 +635,7 @@ The feedback system prompt is embedded as a constant at the top of the file. It 
 
 **`total_points(paragraphs)`** sums the point values of all scored paragraphs.
 
-**`generate_score(paragraphs, student_answer, attempt_number)`** makes a second, non-streaming Anthropic API call after the qualitative feedback stream completes. It sends only the scored paragraphs and the student answer to a strict examiner persona (`SCORING_SYSTEM_PROMPT`) that returns a JSON array of `{paragraph_index, points_awarded, max_points}` objects. Returns `None` on failure (invalid JSON, schema mismatch, out-of-range values) so scoring failures never interrupt the student experience.
+**`generate_score(paragraphs, student_answer, attempt_number)`** makes a second, non-streaming LLM call after the qualitative feedback stream completes. It sends only the scored paragraphs and the student answer to a strict examiner persona (`SCORING_SYSTEM_PROMPT`) that returns a JSON array of `{paragraph_index, points_awarded, max_points}` objects. Returns `None` on failure (invalid JSON, schema mismatch, out-of-range values) so scoring failures never interrupt the student experience. Dispatches to Anthropic or Ollama based on `LLM_BACKEND`.
 
 ### `app.py`
 
@@ -656,10 +721,10 @@ Student clicks "Submit"
         → Server looks up question (model_answer, rubric)
         → Server parses model answer for [N] point markers
         → Server calls build_messages() to construct the prompt
-        → Server opens streaming connection to Anthropic API
+        → Server opens streaming connection to LLM (Anthropic or Ollama)
         → Each text chunk is forwarded to browser via SSE
         → Browser renders chunks in real-time
-        → When stream ends, server saves attempt to SQLite
+        → When stream ends, server saves attempt to database
         → Browser receives "done" event, reloads history
         → If question has point markers, server calls generate_score()
             → Non-streaming LLM call returns JSON score data
@@ -707,7 +772,7 @@ This is enforced at multiple layers:
 - Password length is validated server-side to 8–72 characters (bcrypt silently truncates at 72 bytes).
 - The `POST /logout` route prevents CSRF-via-GET (an `<img src="/logout">` tag cannot log out an instructor).
 
-**Note on HTTPS:** The session cookie does not set the `Secure` flag, which is intentional for local HTTP development. If you deploy this app over HTTPS, add `secure=True` to the `set_cookie` call in `app.py`'s `_set_session_cookie` helper.
+**Note on HTTPS:** The session cookie does not set the `Secure` flag, which is intentional for local HTTP development where the app is accessed over plain HTTP. In the Docker production stack, Nginx terminates TLS and the app container is only accessible internally — cookies travel over HTTPS end-to-end even without the flag. For any non-Docker HTTPS deployment, add `secure=True` to the `set_cookie` call in `app.py`'s `_set_session_cookie` helper.
 
 ## Database Schema
 
@@ -867,9 +932,9 @@ The instructor template receives `questions` (filtered to the instructor's class
 - **Plagiarism detection** — flag suspiciously similar submissions across students in the same class
 
 ### Quality / ops
-- **Deployment** — host on Railway, Fly.io, or similar; the app is a single Python process with a SQLite file, which maps cleanly to a single-instance PaaS deployment
 - **Admin tools** — invite code management, user list, and class overview for a super-admin role; currently all managed via CLI or direct database access
-- **Rate limiting** — the `/api/feedback` endpoint calls the Anthropic API with no per-user throttling; important before any public deployment
+- **Rate limiting** — `/api/feedback` is rate-limited at the Nginx layer (20 req/min per IP by default in `nginx.conf`). For finer-grained per-user throttling, add middleware in `app.py`.
+- **PaaS deployment** — the Docker image can also be deployed to Railway, Fly.io, or similar single-instance PaaS platforms with a managed PostgreSQL add-on
 
 ### Polish
 - **Front-end design** — improve the visual design using Claude's [frontend-design plugin](https://claude.com/plugins/frontend-design)
@@ -881,9 +946,9 @@ The instructor template receives `questions` (filtered to the instructor's class
 ## Troubleshooting
 
 ### "Failed to get feedback" error
-- Check that your `.env` file has a valid `ANTHROPIC_API_KEY`.
-- Make sure the API key has available credits at [console.anthropic.com](https://console.anthropic.com).
-- Check the terminal running `python app.py` for error messages.
+- If using `LLM_BACKEND=anthropic`: check that your `.env` has a valid `ANTHROPIC_API_KEY` with available credits at [console.anthropic.com](https://console.anthropic.com).
+- If using `LLM_BACKEND=ollama`: confirm Ollama is running (`ollama list`) and the model in `OLLAMA_MODEL` has been pulled (`ollama pull llama3.3:70b`). Check `OLLAMA_BASE_URL` matches where Ollama is listening.
+- Check the terminal running `python app.py` (or `docker compose logs app`) for error messages.
 
 ### Server won't start
 - Ensure all dependencies are installed: `pip install -r requirements.txt`
@@ -895,17 +960,25 @@ The instructor template receives `questions` (filtered to the instructor's class
 
 ### Lost my revision history
 - History is tied to a browser session ID stored in `localStorage`. Clearing browser data or switching browsers resets it.
-- The data still exists in the SQLite database. You can query it directly:
+- The data still exists in the database. With SQLite:
   ```bash
   sqlite3 essay_coach.db "SELECT * FROM attempts ORDER BY created_at DESC;"
   ```
+  With PostgreSQL (Docker):
+  ```bash
+  docker compose exec db psql -U essay_coach -c "SELECT * FROM attempts ORDER BY created_at DESC;"
+  ```
 
 ### Forgot the invite code (instructor registration)
-- Retrieve it from the database:
+- Log in to the instructor dashboard — it's displayed in the Settings section.
+- Or retrieve it from the database. With SQLite:
   ```bash
   sqlite3 essay_coach.db "SELECT value FROM settings WHERE key='invite_code';"
   ```
-- Or log in to the instructor dashboard — it's displayed in the Settings section.
+  With PostgreSQL (Docker):
+  ```bash
+  docker compose exec db psql -U essay_coach -c "SELECT value FROM settings WHERE key='invite_code';"
+  ```
 
 ### Forgot a class code
 - Log in to the instructor dashboard and go to **Manage Classes**. Both the student code and instructor invite code are displayed for each class, with Rotate buttons.
@@ -1111,3 +1184,30 @@ The eighth phase let students explicitly start a fresh revision chain for the sa
 - *Sessions are isolated.* Attempts are scoped to `session_id`. A new session starts with zero attempts — previous sessions' history is visible but does not affect the AI's feedback for the new chain.
 - *SQLite table-rebuild migration.* The old schema had `UNIQUE(student_id, question_id)`; the new schema needs `UNIQUE(student_id, question_id, session_number)`. Since SQLite cannot drop constraints via `ALTER TABLE`, the migration rebuilds the table. `PRAGMA foreign_keys = OFF` guards against orphaned-row errors in test scenarios.
 - *`Promise.all` for parallel fetches.* History renders by fetching all session attempt lists concurrently rather than sequentially, with per-fetch error handling so a single failed request doesn't blank the entire history panel.
+
+## Phase 9 — Production Deployment
+
+The ninth phase prepared the app for deployment on a university server: PostgreSQL support, a switchable LLM backend (Ollama), a Docker Compose production stack, and a one-time migration script for existing SQLite databases.
+
+**What was built:**
+- `db_connection.py`: a thin abstraction layer with `_SQLiteConn` (wraps sqlite3, converts `%s`→`?`, returns dict rows) and `_PGConn` (wraps psycopg2 with `RealDictCursor`). `IS_POSTGRES` is set at import time from `DATABASE_URL`. `get_conn()` dispatches to the right backend.
+- `db.py` refactored to use `db_connection`: replaced all `?` placeholders with `%s`; replaced `INSERT OR IGNORE` with `INSERT INTO ... ON CONFLICT DO NOTHING`; replaced `datetime('now')` in session queries with a Python datetime parameter; added `_init_db_postgres()` for a clean `CREATE TABLE IF NOT EXISTS` path on fresh PostgreSQL databases (no SQLite-specific ALTER TABLE migrations needed).
+- `feedback.py` extended with `_ollama_feedback_stream()` (streams from Ollama's `/v1/chat/completions` via `httpx.AsyncClient`) and `_ollama_score()` (non-streaming equivalent). `generate_feedback_stream()` and `generate_score()` both dispatch on `LLM_BACKEND`.
+- `config.py` extended with `DATABASE_URL`, `LLM_BACKEND`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`.
+- `.env.example` updated to document all env vars with explanations.
+- `requirements.txt` extended with `psycopg2-binary==2.9.10` and `httpx>=0.27.0`.
+- `Dockerfile`: python:3.12-slim image, installs `libpq5`, runs uvicorn on port 8000.
+- `docker-compose.yml`: four services — `app`, `db` (postgres:16-alpine with healthcheck), `nginx`, `ollama` (profile `ollama`, optional).
+- `nginx.conf`: HTTP→HTTPS redirect, TLS termination, `proxy_buffering off` on `/api/feedback` for SSE, rate limit zone (20 req/min per IP) on `/api/feedback`.
+- `.dockerignore`: excludes `.env`, `*.db`, `__pycache__`, `.git`, `docs/`, `*.md`.
+- `scripts/migrate_to_postgres.py`: one-time migration script that reads an existing SQLite file and writes all rows to PostgreSQL, respecting foreign-key insertion order (settings → users → classes → class_members → questions → attempts → student_users → student_sessions → student_question_sessions).
+- New test files: `tests/test_config.py`, `tests/test_db_connection.py`, `tests/test_ollama_feedback.py`.
+- All existing test fixtures updated: monkeypatching changed from `db_module.DATABASE_PATH` (which no longer exists on `db.py`) to `config_module.DATABASE_PATH` (the canonical source of truth read by `db_connection.py`).
+
+**Key design decisions made in Phase 9:**
+- *`%s` as the common placeholder dialect.* Both backends use `%s` in `db.py`. The `_SQLiteConn` wrapper converts to `?` transparently, so no query strings needed to change per backend.
+- *Module-level `import config as _config` in `db_connection.py`.* Capturing the config module object at import time (rather than looking it up via `sys.modules` on each call) ensures that monkeypatching `config_module.DATABASE_PATH` in tests is visible to `get_conn()` even after `test_config.py` reloads the config module.
+- *`_init_db_postgres` skips SQLite migrations.* PostgreSQL databases are always fresh on first deploy; there is no need to ALTER TABLE for Phase 3/4/7/8 columns. The clean `CREATE TABLE IF NOT EXISTS` path is simpler and more reliable.
+- *Ollama via OpenAI-compatible endpoint.* Ollama's `/v1/chat/completions` is structurally identical to the OpenAI API, so the integration uses `httpx` with standard SSE parsing rather than a dedicated Ollama library. This keeps the dependency footprint small.
+- *`ollama` service is profile-gated.* `docker compose up -d` starts the three core services (app, db, nginx). Adding `--profile ollama` starts Ollama too. This avoids pulling a large Ollama image for deployments that use the Anthropic API.
+- *Rate limiting at Nginx.* The 20 req/min limit on `/api/feedback` protects both the LLM API quota and the server from runaway clients. The limit is per source IP and configurable in `nginx.conf`.

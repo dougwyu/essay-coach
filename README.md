@@ -12,13 +12,26 @@ Here is an infographic created by pointing Google's NotebookLM at [docs/tutorial
 
 ## Setup
 
-This version assumes that you have a Claude API key, which is available for purchase at [Claude Dashboard](https://platform.claude.com/dashboard). Future versions will allow substitution with a locally running LLM like ollama or deepseek.
+### Local development
+
+Requires Python 3.9+ and either an Anthropic API key or a locally-running [Ollama](https://ollama.com) instance.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env  # add your ANTHROPIC_API_KEY
+cp .env.example .env  # configure your API key and backend (see .env.example)
 python app.py         # runs on localhost:8000
 ```
+
+Set `LLM_BACKEND=anthropic` (default) and supply `ANTHROPIC_API_KEY`, or set `LLM_BACKEND=ollama` to use a local model via Ollama. See `.env.example` for all options.
+
+### Production deployment (Docker)
+
+```bash
+cp .env.example .env  # fill in credentials and set DATABASE_URL for PostgreSQL
+docker compose up -d
+```
+
+Brings up the app, a PostgreSQL database, and an Nginx reverse proxy. Add the `--profile ollama` flag to also start a local Ollama instance. See [docs/tutorial.md](docs/tutorial.md) for full deployment instructions.
 
 ## Usage
 

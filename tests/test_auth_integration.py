@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import db as db_module
+import config as config_module
 from app import app
 from db import init_db, get_setting, get_session
 
@@ -9,7 +9,7 @@ from db import init_db, get_setting, get_session
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield
 

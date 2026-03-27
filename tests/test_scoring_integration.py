@@ -1,13 +1,13 @@
 import json
 import pytest
-import db as db_module
+import config as config_module
 from db import init_db, create_attempt, get_attempts
 
 
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(db_module, "DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield
 

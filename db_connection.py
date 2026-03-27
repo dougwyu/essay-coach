@@ -10,7 +10,8 @@ Set DATABASE_URL to a postgresql:// URI to use PostgreSQL.
 Leave it blank (or set DATABASE_PATH) for SQLite.
 """
 import sqlite3
-from config import DATABASE_PATH, DATABASE_URL
+import config as _config
+from config import DATABASE_URL
 
 IS_POSTGRES = DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")
 
@@ -120,5 +121,4 @@ class _PGConn:
 def get_conn():
     if IS_POSTGRES:
         return _PGConn(DATABASE_URL)
-    import config
-    return _SQLiteConn(config.DATABASE_PATH)
+    return _SQLiteConn(_config.DATABASE_PATH)

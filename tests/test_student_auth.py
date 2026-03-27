@@ -2,6 +2,7 @@
 import sqlite3
 import pytest
 import uuid
+import config as config_module
 from db import (
     init_db,
     create_student_user,
@@ -26,8 +27,7 @@ from app import app as fastapi_app
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr("config.DATABASE_PATH", db_path)
-    monkeypatch.setattr("db.DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     init_db()
     yield
 
@@ -241,8 +241,7 @@ def test_valid_session_slides_window(client, tmp_path):
 def old_schema_db(tmp_path, monkeypatch):
     """Creates a database with the old student_question_sessions schema (no session_number)."""
     db_path = str(tmp_path / "old.db")
-    monkeypatch.setattr("config.DATABASE_PATH", db_path)
-    monkeypatch.setattr("db.DATABASE_PATH", db_path)
+    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
     conn = sqlite3.connect(db_path)
     conn.executescript("""
         CREATE TABLE student_users (

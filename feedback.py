@@ -3,7 +3,8 @@ import json
 import re
 
 import anthropic
-from config import ANTHROPIC_API_KEY, MODEL_NAME
+import httpx
+from config import ANTHROPIC_API_KEY, MODEL_NAME, LLM_BACKEND, OLLAMA_BASE_URL, OLLAMA_MODEL
 
 
 def parse_scored_paragraphs(model_answer: str) -> list[dict]:
@@ -73,10 +74,61 @@ def build_messages(question_prompt, model_answer, rubric, student_answer, attemp
     return [{"role": "user", "content": content}]
 
 
-async def generate_feedback_stream(question_prompt, model_answer, rubric, student_answer, attempt_number, previous_feedback=None):
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-    messages = build_messages(question_prompt, model_answer, rubric, student_answer, attempt_number, previous_feedback)
+async def _ollama_feedback_stream(messages, system_prompt):
+    """Stream feedback from Ollama's OpenAI-compatible endpoint."""
+    payload = {
+        "model": OLLAMA_MODEL,
+        "stream": True,
+        "max_tokens": 2048,
+        "messages": [{"role": "system", "content": system_prompt}] + messages,
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            f"{OLLAMA_BASE_URL}/v1/chat/completions",
+            json=payload,
+            headers={"Authorization": "Bearer ollama"},
+        ) as response:
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                payload_str = line[6:]
+                if payload_str.strip() == "[DONE]":
+                    break
+                chunk = json.loads(payload_str)
+                delta = chunk["choices"][0]["delta"].get("content", "")
+                if delta:
+                    yield delta
 
+
+async def _ollama_score(user_message, system_prompt):
+    """Request a JSON score from Ollama (non-streaming)."""
+    payload = {
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            f"{OLLAMA_BASE_URL}/v1/chat/completions",
+            json=payload,
+            headers={"Authorization": "Bearer ollama"},
+        )
+    return response.json()["choices"][0]["message"]["content"].strip()
+
+
+async def generate_feedback_stream(question_prompt, model_answer, rubric, student_answer, attempt_number, previous_feedback=None):
+    messages = build_messages(question_prompt, model_answer, rubric, student_answer, attempt_number, previous_feedback)
+    if LLM_BACKEND == "ollama":
+        async for chunk in _ollama_feedback_stream(messages, SYSTEM_PROMPT):
+            yield chunk
+        return
+
+    # Anthropic path (default)
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     async with client.messages.stream(
         model=MODEL_NAME,
         max_tokens=2048,
@@ -129,15 +181,21 @@ async def generate_score(paragraphs: list[dict], student_answer: str, attempt_nu
         f'<student_answer attempt="{attempt_number}">{student_answer}</student_answer>'
     )
 
-    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     try:
-        response = await client.messages.create(
-            model=MODEL_NAME,
-            max_tokens=1024,
-            system=SCORING_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        data = json.loads(response.content[0].text.strip())
+        if LLM_BACKEND == "ollama":
+            raw = await _ollama_score(user_message, SCORING_SYSTEM_PROMPT)
+        else:
+            # Anthropic path (default)
+            client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            response = await client.messages.create(
+                model=MODEL_NAME,
+                max_tokens=1024,
+                system=SCORING_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
+            )
+            raw = response.content[0].text.strip()
+
+        data = json.loads(raw)
         if validate_score(data, paragraphs):
             return data
         return None

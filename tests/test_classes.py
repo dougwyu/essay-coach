@@ -1,6 +1,7 @@
 import pytest
 import config as config_module
 from db import init_db, create_question, get_question, list_questions
+from db_connection import IS_POSTGRES
 from db import (
     create_class,
     get_class,
@@ -24,6 +25,7 @@ def fresh_db(tmp_path, monkeypatch):
     yield
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite schema introspection only")
 def test_classes_table_exists():
     """init_db creates the classes table."""
     import sqlite3
@@ -35,6 +37,7 @@ def test_classes_table_exists():
     assert row is not None
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite schema introspection only")
 def test_class_members_table_exists():
     import sqlite3
     conn = sqlite3.connect(config_module.DATABASE_PATH)
@@ -45,6 +48,7 @@ def test_class_members_table_exists():
     assert row is not None
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite schema introspection only")
 def test_questions_has_class_id_column():
     import sqlite3
     conn = sqlite3.connect(config_module.DATABASE_PATH)
@@ -53,6 +57,7 @@ def test_questions_has_class_id_column():
     assert "class_id" in cols
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite-only migration test")
 def test_migration_assigns_default_class_to_existing_questions(tmp_path, monkeypatch):
     """Simulates a pre-Phase-3 DB: questions without class_id get assigned to Default class."""
     import sqlite3
@@ -100,6 +105,7 @@ def test_migration_assigns_default_class_to_existing_questions(tmp_path, monkeyp
     assert len(set(r[0] for r in rows)) == 1, "All questions should share one Default class"
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite-only migration test")
 def test_migration_idempotent(tmp_path, monkeypatch):
     """Running init_db() twice after a migration creates exactly one Default class, not two."""
     import sqlite3

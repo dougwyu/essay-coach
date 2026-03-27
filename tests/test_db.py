@@ -17,14 +17,17 @@ DUMMY_CLASS_ID = "00000000-0000-0000-0000-000000000001"
 
 @pytest.fixture(autouse=True)
 def test_db(tmp_path, monkeypatch):
-    import sqlite3
-    db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
+    from db_connection import IS_POSTGRES, get_conn
+    if not IS_POSTGRES:
+        db_path = str(tmp_path / "test.db")
+        monkeypatch.setattr(config_module, "DATABASE_PATH", db_path)
+    else:
+        db_path = None
     init_db()
     # Insert a dummy class so FK constraint is satisfied
-    conn = sqlite3.connect(db_path)
+    conn = get_conn()
     conn.execute(
-        "INSERT INTO classes (id, name, student_code, instructor_code) VALUES (?, ?, ?, ?)",
+        "INSERT INTO classes (id, name, student_code, instructor_code) VALUES (%s, %s, %s, %s)",
         (DUMMY_CLASS_ID, "Test", "STUD0001", "INST0001"),
     )
     conn.commit()

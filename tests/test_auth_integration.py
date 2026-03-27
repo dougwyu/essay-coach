@@ -182,7 +182,12 @@ def test_session_expiry_is_renewed_on_authenticated_request(client):
     # Expiry should now be approximately 7 days from now
     session = db_get_session(token)
     assert session is not None
-    renewed = datetime.strptime(session["expires_at"], "%Y-%m-%d %H:%M:%S")
+    raw = session["expires_at"]
+    # PostgreSQL returns a datetime object; SQLite returns a string
+    if isinstance(raw, str):
+        renewed = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    else:
+        renewed = raw.replace(tzinfo=None)
     assert renewed > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=6)
 
 

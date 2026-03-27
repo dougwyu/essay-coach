@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 import uuid
 import config as config_module
+from db_connection import IS_POSTGRES
 from db import (
     init_db,
     create_student_user,
@@ -190,6 +191,7 @@ def test_session_endpoint_unauthenticated(client):
 
 # --- Session expiry and sliding window tests ---
 
+@pytest.mark.skipif(IS_POSTGRES, reason="queries SQLite file directly")
 def test_expired_session_returns_401(client, tmp_path):
     # Register to get a student_id, then manually insert an expired session
     reg = _register(client)
@@ -212,6 +214,7 @@ def test_expired_session_returns_401(client, tmp_path):
     assert row[0] == "2000-01-01 00:00:00"
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="queries SQLite file directly via rowid")
 def test_valid_session_slides_window(client, tmp_path):
     _register(client)
     db_path = str(tmp_path / "test.db")
@@ -267,6 +270,7 @@ def old_schema_db(tmp_path, monkeypatch):
     yield db_path
 
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite-only migration test")
 def test_migration_adds_session_number(old_schema_db):
     init_db()
     conn = sqlite3.connect(old_schema_db)
@@ -368,11 +372,11 @@ def test_api_attempts_isolated_between_sessions(client):
     sid2 = client.post(f"/api/student/session/{qid}/new").json()["session_id"]
     # Insert a real attempt directly into the DB for session 1
     from db import _connect
-    conn = _connect()
     import uuid as _uuid
+    conn = _connect()
     conn.execute(
         "INSERT INTO attempts (id, question_id, session_id, student_answer, feedback, attempt_number)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
+        " VALUES (%s, %s, %s, %s, %s, %s)",
         (str(_uuid.uuid4()), qid, sid1, "My answer", "Some feedback", 1),
     )
     conn.commit()

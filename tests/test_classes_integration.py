@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import config as config_module
 from app import app
 from db import init_db, get_setting, create_class, add_class_member
+from db_connection import IS_POSTGRES
 
 
 @pytest.fixture(autouse=True)
@@ -205,6 +206,7 @@ def test_instructor_page_includes_classes(client):
 
 # ---- Migration: existing questions assigned to Default class ----
 
+@pytest.mark.skipif(IS_POSTGRES, reason="SQLite-only migration test")
 def test_migration_assigns_default_class(tmp_path, monkeypatch):
     import sqlite3
     db_path = str(tmp_path / "migrate.db")

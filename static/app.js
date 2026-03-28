@@ -300,9 +300,9 @@ function renderScore(scoreData, container = null) {
         ? container.querySelector('.score-content')
         : document.getElementById('score-content');
     if (!section || !content) return;
-    const rows = scoreData.breakdown.map(item =>
+    const rows = scoreData.breakdown.map((item, i) =>
         `<tr>
-           <td class="score-label">${escapeHtml(item.label)}</td>
+           <td class="score-label">Section ${i + 1}</td>
            <td class="score-fraction">${item.awarded} / ${item.max}</td>
          </tr>`
     ).join('');

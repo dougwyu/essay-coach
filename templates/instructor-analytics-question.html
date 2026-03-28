@@ -73,7 +73,7 @@
                         {% set has_any_score = s.score_progression | select | list | length > 0 %}
                         {% if has_any_score %}
                             {% for score in s.score_progression %}
-                                {% if loop.last %}<strong>{{ score if score is not none else '&mdash;' }}</strong>{% else %}{{ score if score is not none else '&mdash;' }} &rarr; {% endif %}
+                                {% if loop.last %}<strong>{{ score if score is not none else '—' }}</strong>{% else %}{{ score if score is not none else '—' }} &rarr; {% endif %}
                             {% endfor %}
                         {% else %}
                             <span class="analytics-muted">&mdash;</span>

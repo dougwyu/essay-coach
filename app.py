@@ -725,4 +725,5 @@ async def api_feedback(data: FeedbackRequest):
 if __name__ == "__main__":
     import uvicorn
 
+    print("App is running on http://localhost:8000/instructor")
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

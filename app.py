@@ -672,6 +672,12 @@ class FeedbackRequest(BaseModel):
 def api_get_attempts(question_id: str, session_id: str):
     attempts = get_attempts(question_id, session_id)
     # SECURITY: model_answer is server-side only, never sent to client
+    for a in attempts:
+        if a.get("score_data") and "breakdown" in a["score_data"]:
+            a["score_data"]["breakdown"] = [
+                {"awarded": b["awarded"], "max": b["max"]}
+                for b in a["score_data"]["breakdown"]
+            ]
     return {"attempts": attempts}
 
 
@@ -717,7 +723,8 @@ async def api_feedback(data: FeedbackRequest):
             score = await generate_score(paragraphs, data.student_answer, attempt_number)
             if score is not None:
                 update_attempt_score(attempt_id, score)
-                yield f"data: {json.dumps({'score': score})}\n\n"
+                client_score = {**score, "breakdown": [{"awarded": b["awarded"], "max": b["max"]} for b in score["breakdown"]]}
+                yield f"data: {json.dumps({'score': client_score})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

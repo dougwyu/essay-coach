@@ -93,6 +93,12 @@ header nav a:hover {
 }
 .btn-danger:hover { background: var(--danger); color: white; }
 
+.btn-warning {
+    color: #b45309;
+    border-color: #b45309;
+}
+.btn-warning:hover { background: #b45309; color: white; }
+
 .btn-small {
     padding: 0.25rem 0.75rem;
     font-size: 0.8rem;

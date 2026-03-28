@@ -362,6 +362,13 @@ def get_attempt_count(question_id):
     return row["cnt"]
 
 
+def delete_attempts_for_question(question_id):
+    conn = _connect()
+    conn.execute("DELETE FROM attempts WHERE question_id = %s", (question_id,))
+    conn.commit()
+    conn.close()
+
+
 # --- users ---
 
 def create_user(username: str, password_hash: str) -> str:

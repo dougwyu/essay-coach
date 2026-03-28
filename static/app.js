@@ -428,6 +428,13 @@ async function deleteQuestion(id) {
     window.location.reload();
 }
 
+async function clearHistory(id) {
+    if (!confirm('Clear all student attempt history for this question? This cannot be undone.')) return;
+    const res = await fetch(`/api/questions/${id}/attempts`, { method: 'DELETE' });
+    if (handleAuthError(res)) return;
+    window.location.reload();
+}
+
 // ---- Classes (instructor-classes.html) ----
 
 function initClasses() {

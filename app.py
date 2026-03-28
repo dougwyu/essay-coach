@@ -27,6 +27,7 @@ from db import (
     get_attempts,
     get_attempt_count,
     update_attempt_score,
+    delete_attempts_for_question,
     create_user,
     get_user_by_username,
     create_session,
@@ -646,6 +647,20 @@ def api_update_question(
     return {"ok": True}
 
 
+@app.delete("/api/questions/{question_id}/attempts")
+def api_clear_attempts(
+    question_id: str,
+    user: dict = Depends(require_instructor_api),
+):
+    q = get_question(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not is_class_member(q["class_id"], user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this class")
+    delete_attempts_for_question(question_id)
+    return {"ok": True}
+
+
 @app.delete("/api/questions/{question_id}")
 def api_delete_question(
     question_id: str,
@@ -732,5 +747,5 @@ async def api_feedback(data: FeedbackRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    print("App is running on http://localhost:8000/instructor")
+    print("App is running on \033[1mhttp://localhost:8000/instructor\033[0m")
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

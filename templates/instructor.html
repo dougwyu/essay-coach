@@ -91,6 +91,7 @@
                     <div class="question-actions">
                         <button class="btn btn-small" onclick="editQuestion('{{ q.id }}')">Edit</button>
                         <button class="btn btn-small btn-danger" onclick="deleteQuestion('{{ q.id }}')">Delete</button>
+                        <button class="btn btn-small btn-warning" onclick="clearHistory('{{ q.id }}')">Clear History</button>
                         <a href="/instructor/analytics/{{ q.id }}" class="btn btn-small">Analytics</a>
                     </div>
                 </div>

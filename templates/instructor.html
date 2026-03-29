@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Essay Coach — Instructor</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
     <header>
@@ -30,15 +30,15 @@
                 </div>
                 <div class="field">
                     <label for="q-prompt">Essay Prompt</label>
-                    <textarea id="q-prompt" rows="4" required placeholder="The question students will see..."></textarea>
+                    <textarea id="q-prompt" rows="3" required placeholder="The question students will see..."></textarea>
                 </div>
                 <div class="field">
                     <label for="q-model-answer">Model Answer</label>
-                    <textarea id="q-model-answer" rows="8" required placeholder="The ideal answer (hidden from students)..."></textarea>
+                    <textarea id="q-model-answer" rows="5" required placeholder="The ideal answer (hidden from students)..."></textarea>
                 </div>
                 <div class="field">
                     <label for="q-rubric">Rubric <span class="optional">(optional, one bullet per line)</span></label>
-                    <textarea id="q-rubric" rows="4" placeholder="- Covers concept A&#10;- Explains relationship between B and C&#10;- Uses at least one example"></textarea>
+                    <textarea id="q-rubric" rows="3" placeholder="- Covers concept A&#10;- Explains relationship between B and C&#10;- Uses at least one example"></textarea>
                 </div>
                 <div class="field">
                     <label for="q-class">Class</label>
@@ -60,6 +60,17 @@
                     <button type="button" class="btn btn-secondary" id="cancel-btn" style="display:none" onclick="cancelEdit()">Cancel</button>
                 </div>
             </form>
+
+            <div class="settings-section-inline">
+                <h2>Settings</h2>
+                <div class="field" style="margin-bottom:0;">
+                    <label>Invite Code <span class="optional">(share with new instructors to allow registration)</span></label>
+                    <div class="invite-code-row">
+                        <code id="invite-code-display">Loading…</code>
+                        <button class="btn btn-small" onclick="rotateInviteCode()">Rotate</button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section class="questions-section">
@@ -102,17 +113,6 @@
             </div>
         </section>
     </main>
-
-    <div class="settings-section">
-        <h2>Settings</h2>
-        <div class="field">
-            <label>Invite Code <span class="optional">(share with new instructors to allow registration)</span></label>
-            <div class="invite-code-row">
-                <code id="invite-code-display">Loading…</code>
-                <button class="btn btn-small" onclick="rotateInviteCode()">Rotate</button>
-            </div>
-        </div>
-    </div>
 
     <script src="/static/app.js"></script>
     <script>

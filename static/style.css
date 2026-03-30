@@ -484,10 +484,16 @@ select.class-filter {
 .question-list-view {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 2rem;
   overflow-y: auto;
+}
+
+/* Auth/code panels are short — keep them vertically centred */
+.question-list-view:has(#auth-panel),
+.question-list-view:has(#class-code-panel) {
+  align-items: center;
 }
 
 .class-entry-form {
@@ -505,11 +511,23 @@ select.class-filter {
   margin-bottom: 1.1rem;
 }
 
+.question-list-inner {
+  width: 100%;
+  max-width: 920px;
+}
+
+.question-list-inner h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 2px solid var(--border);
+}
+
 .question-grid {
   width: 100%;
-  max-width: 680px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
 }
 

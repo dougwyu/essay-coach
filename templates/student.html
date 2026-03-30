@@ -69,8 +69,9 @@
     </nav>
 </header>
 <main class="question-list-view">
-    <h2>Select a Question</h2>
-    <div class="question-grid">
+    <div class="question-list-inner">
+        <h2>Select a Question</h2>
+        <div class="question-grid">
         {% for q in questions %}
         <a href="/student/{{ class_id }}/{{ q.id }}" class="question-link-card">
             <h3>{{ q.title }}</h3>
@@ -80,6 +81,7 @@
         {% if not questions %}
         <p class="empty-state">No questions available yet. Ask your instructor to create some.</p>
         {% endif %}
+        </div>
     </div>
 </main>
 <script src="/static/app.js"></script>

@@ -101,6 +101,22 @@ def get_invite_code() -> str:
     return row[0]
 
 
+def cleanup_screenshot_classes() -> None:
+    """Delete all classes created by screenshot_user and remove any other memberships."""
+    db_path = os.getenv("DATABASE_PATH", "essay_coach.db")
+    db = sqlite3.connect(db_path)
+    db.execute("PRAGMA foreign_keys = ON")
+    row = db.execute("SELECT id FROM users WHERE username = ?", (INST_USER,)).fetchone()
+    if row:
+        uid = row[0]
+        deleted = db.execute("DELETE FROM classes WHERE created_by = ?", (uid,)).rowcount
+        db.execute("DELETE FROM class_members WHERE user_id = ?", (uid,))
+        db.commit()
+        if deleted:
+            print(f"  cleaned up {deleted} previous screenshot class(es)")
+    db.close()
+
+
 async def save(page, name: str):
     path = OUT / name
     await page.screenshot(path=str(path), full_page=False)
@@ -214,6 +230,8 @@ async def run():
 
         # ── SETUP: register/login instructor, create class + questions ────
         print("Setting up...")
+
+        cleanup_screenshot_classes()
 
         await page.request.post(f"{BASE}/api/auth/register",
             data=json.dumps({"username": INST_USER, "password": INST_PASS, "invite_code": invite}),

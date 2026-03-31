@@ -141,12 +141,14 @@ async def run():
             const fc = document.getElementById('feedback-content');
             if (fb && fc) {
                 fb.style.display = 'block';
-                fc.textContent = 'Good answer! You correctly identify the purpose and outcome '
-                    + 'of both mitosis and meiosis, and note the two divisions in meiosis. '
-                    + 'To improve: explain the biological significance of the reduction in '
-                    + 'chromosome number (allowing fertilisation to restore the diploid number), '
-                    + 'and mention that crossing over occurs specifically at chiasmata during '
-                    + 'prophase I.';
+                fc.textContent = 'COVERAGE: You have correctly identified the main outcomes '
+                    + 'of both processes and noted the number of divisions involved in meiosis. '
+                    + 'Consider whether your answer fully addresses why the chromosome number '
+                    + 'changes during meiosis and what biological purpose this serves.\\n\\n'
+                    + 'DEPTH: Your explanation of the two meiotic divisions is on the right '
+                    + 'track. Think about whether you have described the specific chromosomal '
+                    + 'events that generate genetic variation, and at what stage these occur.\\n\\n'
+                    + 'ACCURACY: No factual errors. A numerical score will follow.';
             }
             const ss = document.getElementById('score-section');
             if (ss) ss.style.display = 'none';
@@ -187,10 +189,11 @@ async def run():
         await sp.evaluate("""() => {
             const fc = document.getElementById('feedback-content');
             if (fc) {
-                fc.textContent = 'Improved from your previous attempt (5/12 → 9/12)! '
-                    + 'You now correctly describe crossing over and both divisions of meiosis. '
-                    + 'Still to address: the biological significance of the haploid chromosome '
-                    + 'number for fertilisation.';
+                fc.textContent = 'PROGRESS: Improved from your previous attempt (5/12 → 9/12)! '
+                    + 'You now address genetic variation more specifically. '
+                    + 'Still to develop: consider whether your answer fully explains '
+                    + 'the significance of the chromosome number change and why it matters '
+                    + 'for the next stage of the life cycle.';
             }
         }""")
         await save(sp, "student-revision.png")

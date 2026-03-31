@@ -6,6 +6,7 @@ Usage: python docs/capture_screenshots.py
 
 import asyncio
 import json
+import httpx
 from pathlib import Path
 from playwright.async_api import async_playwright
 
@@ -17,11 +18,27 @@ CLASS_CODE = "148D0E8Z"
 INST_CODE  = "E2I147ZN"
 Q_PHOTOSYN = "6e39218b-0c3c-4b60-a5cc-d0537870e0d2"
 Q_CELLDIV  = "5046cb75-717f-4b98-bee1-d072726f0317"
-INST_USER  = "screenshot_user"
-INST_PASS  = "screenshotpass1"
-INVITE     = "L5OUPWZ1"
+INST_USER    = "screenshot_user"
+INST_PASS    = "screenshotpass1"
+INVITE       = "L5OUPWZ1"
+STU_USER     = "screenshot_student"
+STU_EMAIL    = "screenshot_student@example.com"
+STU_PASS     = "screenshotstu1"
 
 VIEWPORT = {"width": 1440, "height": 900}
+
+# Student answers for Cell Division (attempt 1 = weaker, attempt 2 = stronger)
+ANSWER_1 = (
+    "Mitosis makes two cells that are the same as the parent cell. It is used for growth. "
+    "Meiosis makes four cells and is used for reproduction. Meiosis has two divisions."
+)
+ANSWER_2 = (
+    "Mitosis produces two genetically identical diploid daughter cells and is used "
+    "for growth and tissue repair. Meiosis produces four genetically unique haploid "
+    "cells and is used for sexual reproduction. Mitosis involves one division; meiosis "
+    "involves two divisions (meiosis I separates homologous chromosomes, meiosis II "
+    "separates sister chromatids). Crossing over during meiosis I generates genetic variation."
+)
 
 
 async def save(page, name: str):
@@ -30,14 +47,119 @@ async def save(page, name: str):
     print(f"  saved {name}")
 
 
+async def get_student_cookies() -> dict:
+    """Register (or log in) a student and return their session cookies."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.post(f"{BASE}/api/student/auth/register",
+            json={"username": STU_USER, "email": STU_EMAIL, "password": STU_PASS})
+        if r.status_code not in (200, 400):  # 400 = already exists
+            r.raise_for_status()
+        if r.status_code == 400:
+            # Already registered — log in instead
+            r = await client.post(f"{BASE}/api/student/auth/login",
+                json={"username_or_email": STU_USER, "password": STU_PASS})
+            r.raise_for_status()
+        return dict(r.cookies)
+
+
+async def get_real_feedback(cookies: dict, question_id: str, answer: str, attempt: int) -> tuple[str, dict | None]:
+    """Create a student session, submit answer to SSE endpoint, collect full response."""
+    feedback_text = []
+    score_data = None
+
+    async with httpx.AsyncClient(timeout=120.0, cookies=cookies) as client:
+        # Create a new session for attempt 1, reuse for attempt 2+
+        if attempt == 1:
+            r = await client.post(f"{BASE}/api/student/session/{question_id}/new")
+        else:
+            r = await client.get(f"{BASE}/api/student/session/{question_id}")
+        assert r.status_code == 200, f"Session failed ({r.status_code}): {r.text}"
+        session_id = r.json()["session_id"]
+
+        # Stream feedback
+        async with client.stream(
+            "POST",
+            f"{BASE}/api/feedback",
+            json={"question_id": question_id, "student_answer": answer,
+                  "attempt_number": attempt, "session_id": session_id},
+            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        ) as resp:
+            assert resp.status_code == 200, f"Feedback failed ({resp.status_code}): {resp.text[:200]}"
+            try:
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[6:].strip()
+                    if raw == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(raw)
+                        if "text" in data:
+                            feedback_text.append(data["text"])
+                        elif "score" in data:
+                            score_data = data["score"]
+                    except json.JSONDecodeError:
+                        pass
+            except Exception:
+                pass  # SSE stream closed by server — normal for chunked transfer
+
+    return "".join(feedback_text), score_data
+
+
+def render_score_html(score: dict) -> str:
+    """Build the score HTML that app.js normally builds."""
+    total = f"{score['total_awarded']} / {score['total_max']}"
+    items = []
+    for item in score.get("breakdown", []):
+        pct = item["awarded"] / item["max"] if item["max"] else 0
+        cls = "score-high" if pct >= 0.75 else ("score-mid" if pct >= 0.4 else "score-low")
+        items.append(
+            f'<div class="score-item">'
+            f'<span class="score-item-label">{item.get("label", "Section")}</span>'
+            f'<span class="score-item-value {cls}">{item["awarded"]} / {item["max"]}</span>'
+            f'</div>'
+        )
+    return (
+        f'<div class="score-total">{total}</div>'
+        f'<div class="score-breakdown">{"".join(items)}</div>'
+    )
+
+
+async def inject_feedback(page, feedback: str, score: dict | None, show_score: bool = True):
+    """Inject real feedback and score into the student workspace DOM."""
+    fb_js = feedback.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    score_html = render_score_html(score).replace("`", "\\`") if score else ""
+
+    await page.evaluate(f"""() => {{
+        const fb = document.getElementById('feedback-section');
+        const fc = document.getElementById('feedback-content');
+        if (fb && fc) {{
+            fb.style.display = 'block';
+            fc.textContent = `{fb_js}`;
+        }}
+        const ss = document.getElementById('score-section');
+        const sc = document.getElementById('score-content');
+        if (ss && sc) {{
+            if ({str(show_score and score is not None).lower()} && `{score_html}`) {{
+                ss.style.display = 'block';
+                sc.innerHTML = `{score_html}`;
+            }} else {{
+                ss.style.display = 'none';
+            }}
+        }}
+        const ind = document.getElementById('streaming-indicator');
+        if (ind) ind.style.display = 'none';
+    }}""")
+
+
 async def run():
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
+        ctx = await browser.new_context(viewport=VIEWPORT)
+        page = await ctx.new_page()
 
         # ── INSTRUCTOR SCREENSHOTS ────────────────────────────────
         print("Instructor pages...")
-        ctx = await browser.new_context(viewport=VIEWPORT)
-        page = await ctx.new_page()
 
         # 1. Login page
         await page.goto(f"{BASE}/login")
@@ -61,7 +183,7 @@ async def run():
         await page.wait_for_load_state("networkidle")
         await save(page, "instructor-dashboard.png")
 
-        # 3. Edit mode (click Edit on first question)
+        # 3. Edit mode
         edit_btn = page.locator(".question-card").first.locator("button", has_text="Edit")
         if await edit_btn.count():
             await edit_btn.click()
@@ -99,11 +221,10 @@ async def run():
         await save(page, "instructor-analytics-export.png")
 
         # ── STUDENT SCREENSHOTS ───────────────────────────────────
-        # Reuse the same context (new page) — avoids connection resets
         print("Student pages...")
         sp = await ctx.new_page()
 
-        # 9. Student landing — show class code panel
+        # 9. Student landing
         await sp.goto(f"{BASE}/student")
         await sp.wait_for_load_state("networkidle")
         await sp.wait_for_timeout(400)
@@ -113,112 +234,66 @@ async def run():
             await sp.wait_for_timeout(300)
         await save(sp, "student-landing.png")
 
-        # 10. Question list — navigate directly to class question list
+        # 10. Question list
         await sp.goto(f"{BASE}/student/{CLASS_ID}")
         await sp.wait_for_load_state("networkidle")
         await save(sp, "student-question-list.png")
 
-        # 11. Student workspace (blank)
+        # 11. Student workspace (blank, answer filled in)
         await sp.goto(f"{BASE}/student/{CLASS_ID}/{Q_CELLDIV}")
         await sp.wait_for_load_state("networkidle")
         await sp.wait_for_timeout(500)
         await save(sp, "student-workspace.png")
 
-        # Fill answer text
-        textarea = sp.locator("#student-answer")
-        await textarea.fill(
-            "Mitosis produces two genetically identical diploid daughter cells and is used "
-            "for growth and tissue repair. Meiosis produces four genetically unique haploid "
-            "cells and is used for sexual reproduction. Mitosis involves one division; meiosis "
-            "involves two divisions (meiosis I separates homologous chromosomes, meiosis II "
-            "separates sister chromatids). Crossing over during meiosis I generates genetic "
-            "variation."
-        )
+        # Get student cookies for httpx API calls
+        student_cookies = await get_student_cookies()
 
-        # 12. Feedback (mock)
-        await sp.evaluate("""() => {
-            const fb = document.getElementById('feedback-section');
-            const fc = document.getElementById('feedback-content');
-            if (fb && fc) {
-                fb.style.display = 'block';
-                fc.textContent = 'COVERAGE: You have correctly identified the main outcomes '
-                    + 'of both processes and noted the number of divisions involved in meiosis. '
-                    + 'Consider whether your answer fully addresses why the chromosome number '
-                    + 'changes during meiosis and what biological purpose this serves.\\n\\n'
-                    + 'DEPTH: Your explanation of the two meiotic divisions is on the right '
-                    + 'track. Think about whether you have described the specific chromosomal '
-                    + 'events that generate genetic variation, and at what stage these occur.\\n\\n'
-                    + 'ACCURACY: No factual errors. A numerical score will follow.';
-            }
-            const ss = document.getElementById('score-section');
-            if (ss) ss.style.display = 'none';
-        }""")
+        # ── ATTEMPT 1: weaker answer ──────────────────────────────
+        print("  calling AI for attempt 1 feedback...")
+        fb1, score1 = await get_real_feedback(student_cookies, Q_CELLDIV, ANSWER_1, attempt=1)
+        print(f"  attempt 1 done — score: {score1.get('total_awarded') if score1 else 'N/A'}/{score1.get('total_max') if score1 else 'N/A'}")
+
+        # ── ATTEMPT 2: stronger answer ────────────────────────────
+        print("  calling AI for attempt 2 feedback...")
+        fb2, score2 = await get_real_feedback(student_cookies, Q_CELLDIV, ANSWER_2, attempt=2)
+        print(f"  attempt 2 done — score: {score2.get('total_awarded') if score2 else 'N/A'}/{score2.get('total_max') if score2 else 'N/A'}")
+
+        # 12. Feedback (attempt 2, text only, no score yet)
+        await sp.locator("#student-answer").fill(ANSWER_2)
+        await inject_feedback(sp, fb2, score2, show_score=False)
         await save(sp, "student-feedback.png")
 
         # 13. Feedback with score
-        await sp.evaluate("""() => {
-            const ss = document.getElementById('score-section');
-            const sc = document.getElementById('score-content');
-            if (ss && sc) {
-                ss.style.display = 'block';
-                sc.innerHTML = `
-                  <div class="score-total">9 / 12</div>
-                  <div class="score-breakdown">
-                    <div class="score-item">
-                      <span class="score-item-label">Section 1</span>
-                      <span class="score-item-value score-high">3 / 3</span>
-                    </div>
-                    <div class="score-item">
-                      <span class="score-item-label">Section 2</span>
-                      <span class="score-item-value score-high">3 / 3</span>
-                    </div>
-                    <div class="score-item">
-                      <span class="score-item-label">Section 3</span>
-                      <span class="score-item-value score-mid">2 / 3</span>
-                    </div>
-                    <div class="score-item">
-                      <span class="score-item-label">Section 4</span>
-                      <span class="score-item-value score-mid">1 / 3</span>
-                    </div>
-                  </div>`;
-            }
-        }""")
+        await inject_feedback(sp, fb2, score2, show_score=True)
         await save(sp, "student-feedback-scored.png")
 
-        # 14. Revision (previous attempt shown)
-        await sp.evaluate("""() => {
-            const fc = document.getElementById('feedback-content');
-            if (fc) {
-                fc.textContent = 'PROGRESS: Improved from your previous attempt (5/12 → 9/12)! '
-                    + 'You now address genetic variation more specifically. '
-                    + 'Still to develop: consider whether your answer fully explains '
-                    + 'the significance of the chromosome number change and why it matters '
-                    + 'for the next stage of the life cycle.';
-            }
-        }""")
+        # 14. Revision — show attempt 2 feedback (which includes PROGRESS section)
+        # fb2 should contain PROGRESS since it's attempt 2
+        await inject_feedback(sp, fb2, score2, show_score=True)
         await save(sp, "student-revision.png")
 
-        # 15. Session history (mock)
-        await sp.evaluate("""() => {
-            const hs = document.getElementById('history-sidebar');
+        # 15. Session history — inject real scores from both attempts
+        s1_total = f"{score1['total_awarded']} / {score1['total_max']}" if score1 else "—"
+        s2_total = f"{score2['total_awarded']} / {score2['total_max']}" if score2 else "—"
+        await sp.evaluate(f"""() => {{
             const hc = document.getElementById('history-content');
             const ht = document.getElementById('history-toggle-text');
-            if (hs && hc && ht) {
+            if (hc && ht) {{
                 ht.textContent = 'Hide Revision History';
                 hc.style.display = 'block';
                 hc.innerHTML = `
                   <div class="history-attempt">
                     <div class="history-attempt-label">Attempt 1</div>
                     <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.15rem;">
-                      Score: 5 / 12</div>
+                      Score: {s1_total}</div>
                   </div>
                   <div class="history-attempt">
                     <div class="history-attempt-label">Attempt 2 — current</div>
                     <div style="font-size:0.82rem;color:var(--teal-dark);font-weight:600;margin-top:0.15rem;">
-                      Score: 9 / 12</div>
+                      Score: {s2_total}</div>
                   </div>`;
-            }
-        }""")
+            }}
+        }}""")
         await save(sp, "student-session-history.png")
 
         await browser.close()

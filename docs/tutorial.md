@@ -217,7 +217,7 @@ basis for most food chains and aerobic life.
 
 You can optionally assign point values to paragraphs in your model answer by appending `[N]` (where N is a positive integer) at the end of a paragraph. When present, students receive a numeric score after each submission.
 
-**The blank line before each `[N]` marker is required.** The scoring engine identifies paragraphs by splitting on blank lines — a `[N]` at the end of a paragraph without a preceding blank line will not be detected as a separate section.
+**Blank lines between paragraphs are required for scoring to work.** The scoring engine splits the model answer on blank lines — if two paragraphs run together without a blank line between them, they are treated as one section.
 
 **Example with scoring:**
 

@@ -2,10 +2,16 @@
 Screenshot capture script for Essay Coach tutorial.
 Run from the essay-coach directory with the server running on port 8000.
 Usage: python docs/capture_screenshots.py
+
+The script creates a fresh class and questions on every run so it works
+against any database — no hardcoded UUIDs or codes required.
 """
 
 import asyncio
 import json
+import os
+import sqlite3
+import time
 import httpx
 from pathlib import Path
 from playwright.async_api import async_playwright
@@ -13,17 +19,14 @@ from playwright.async_api import async_playwright
 BASE = "http://localhost:8000"
 OUT  = Path(__file__).parent / "images"
 
-CLASS_ID   = "3eadff64-6bf0-4157-ac53-697e1c4dbee6"
-CLASS_CODE = "148D0E8Z"
-INST_CODE  = "E2I147ZN"
-Q_PHOTOSYN = "6e39218b-0c3c-4b60-a5cc-d0537870e0d2"
-Q_CELLDIV  = "5046cb75-717f-4b98-bee1-d072726f0317"
-INST_USER    = "screenshot_user"
-INST_PASS    = "screenshotpass1"
-INVITE       = "L5OUPWZ1"
-STU_USER     = "screenshot_student"
-STU_EMAIL    = "screenshot_student@example.com"
-STU_PASS     = "screenshotstu1"
+INST_USER = "screenshot_user"
+INST_PASS = "screenshotpass1"
+
+# Fresh student account per run — ensures attempt 1 is truly attempt 1
+_SUFFIX   = str(int(time.time()))[-6:]
+STU_USER  = f"screenshot_student_{_SUFFIX}"
+STU_EMAIL = f"screenshot_student_{_SUFFIX}@example.com"
+STU_PASS  = "screenshotstu1"
 
 VIEWPORT = {"width": 1440, "height": 900}
 
@@ -40,6 +43,63 @@ ANSWER_2 = (
     "separates sister chromatids). Crossing over during meiosis I generates genetic variation."
 )
 
+CELLDIV_QUESTION = {
+    "title": "Cell Division",
+    "prompt": (
+        "Describe the key differences between mitosis and meiosis. "
+        "Include the number and type of daughter cells produced, "
+        "and explain the biological purpose of each process."
+    ),
+    "model_answer": (
+        "Mitosis produces two genetically identical diploid daughter cells "
+        "and is used for growth, tissue repair, and asexual reproduction. [3]\n\n"
+        "Meiosis produces four genetically unique haploid cells (gametes) "
+        "and is used for sexual reproduction. [3]\n\n"
+        "Key differences: meiosis involves two rounds of cell division, "
+        "crossing-over between homologous chromosomes in prophase I (creating genetic variation), "
+        "and separation of homologous pairs in meiosis I. [4]"
+    ),
+    "rubric": (
+        "- Must contrast ploidy (diploid vs. haploid)\n"
+        "- Must state the number of daughter cells (2 vs. 4)\n"
+        "- Must describe the biological purpose of each\n"
+        "- Must mention genetic variation / crossing-over for meiosis"
+    ),
+}
+
+PHOTOSYN_QUESTION = {
+    "title": "Photosynthesis",
+    "prompt": (
+        "Explain the process of photosynthesis, including the light-dependent "
+        "and light-independent reactions. Where does each stage occur, and what "
+        "are the key inputs and outputs?"
+    ),
+    "model_answer": (
+        "The light-dependent reactions in the thylakoid membranes use sunlight "
+        "to split water molecules, releasing oxygen and producing ATP and NADPH. [4]\n\n"
+        "The Calvin cycle (light-independent reactions) takes place in the stroma "
+        "and uses the ATP and NADPH to fix CO\u2082 into glucose via the enzyme RuBisCO. [4]\n\n"
+        "The net equation is: 6CO\u2082 + 6H\u2082O + light energy \u2192 C\u2086H\u2081\u2082O\u2086 + 6O\u2082. [2]"
+    ),
+    "rubric": (
+        "- Must distinguish light-dependent vs. light-independent reactions\n"
+        "- Must name thylakoid membranes and stroma as locations\n"
+        "- Must include the overall equation or equivalent\n"
+        "- Must mention ATP and NADPH as products of light reactions"
+    ),
+}
+
+
+def get_invite_code() -> str:
+    """Read the invite code from the local SQLite DB."""
+    db_path = os.getenv("DATABASE_PATH", "essay_coach.db")
+    db = sqlite3.connect(db_path)
+    row = db.execute("SELECT value FROM settings WHERE key='invite_code'").fetchone()
+    db.close()
+    if not row:
+        raise RuntimeError("invite_code not found in settings table. Is the server running and DB initialised?")
+    return row[0]
+
 
 async def save(page, name: str):
     path = OUT / name
@@ -48,17 +108,11 @@ async def save(page, name: str):
 
 
 async def get_student_cookies() -> dict:
-    """Register (or log in) a student and return their session cookies."""
+    """Register a fresh student account and return session cookies."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(f"{BASE}/api/student/auth/register",
             json={"username": STU_USER, "email": STU_EMAIL, "password": STU_PASS})
-        if r.status_code not in (200, 400):  # 400 = already exists
-            r.raise_for_status()
-        if r.status_code == 400:
-            # Already registered — log in instead
-            r = await client.post(f"{BASE}/api/student/auth/login",
-                json={"username_or_email": STU_USER, "password": STU_PASS})
-            r.raise_for_status()
+        r.raise_for_status()
         return dict(r.cookies)
 
 
@@ -68,7 +122,6 @@ async def get_real_feedback(cookies: dict, question_id: str, answer: str, attemp
     score_data = None
 
     async with httpx.AsyncClient(timeout=120.0, cookies=cookies) as client:
-        # Create a new session for attempt 1, reuse for attempt 2+
         if attempt == 1:
             r = await client.post(f"{BASE}/api/student/session/{question_id}/new")
         else:
@@ -76,7 +129,6 @@ async def get_real_feedback(cookies: dict, question_id: str, answer: str, attemp
         assert r.status_code == 200, f"Session failed ({r.status_code}): {r.text}"
         session_id = r.json()["session_id"]
 
-        # Stream feedback
         async with client.stream(
             "POST",
             f"{BASE}/api/feedback",
@@ -153,30 +205,63 @@ async def inject_feedback(page, feedback: str, score: dict | None, show_score: b
 
 
 async def run():
+    invite = get_invite_code()
+
     async with async_playwright() as pw:
         browser = await pw.chromium.launch()
         ctx = await browser.new_context(viewport=VIEWPORT)
         page = await ctx.new_page()
 
-        # ── INSTRUCTOR SCREENSHOTS ────────────────────────────────
+        # ── SETUP: register/login instructor, create class + questions ────
+        print("Setting up...")
+
+        await page.request.post(f"{BASE}/api/auth/register",
+            data=json.dumps({"username": INST_USER, "password": INST_PASS, "invite_code": invite}),
+            headers={"Content-Type": "application/json"})
+        res = await page.request.post(f"{BASE}/api/auth/login",
+            data=json.dumps({"username": INST_USER, "password": INST_PASS}),
+            headers={"Content-Type": "application/json"})
+        assert res.ok, f"Login failed: {await res.text()}"
+
+        cls_res = await page.request.post(f"{BASE}/api/classes",
+            data=json.dumps({"name": "Biology 101"}),
+            headers={"Content-Type": "application/json"})
+        assert cls_res.ok, f"Create class failed: {await cls_res.text()}"
+        cls_data = await cls_res.json()
+        CLASS_ID = cls_data["class_id"]
+
+        cd_res = await page.request.post(f"{BASE}/api/questions",
+            data=json.dumps({**CELLDIV_QUESTION, "class_id": CLASS_ID}),
+            headers={"Content-Type": "application/json"})
+        assert cd_res.ok, f"Create Cell Division question failed: {await cd_res.text()}"
+        Q_CELLDIV = (await cd_res.json())["id"]
+
+        ph_res = await page.request.post(f"{BASE}/api/questions",
+            data=json.dumps({**PHOTOSYN_QUESTION, "class_id": CLASS_ID}),
+            headers={"Content-Type": "application/json"})
+        assert ph_res.ok, f"Create Photosynthesis question failed: {await ph_res.text()}"
+
+        print(f"  class={CLASS_ID}  Q_CELLDIV={Q_CELLDIV}")
+
+        # ── STUDENT AI CALLS (done early so analytics pages show real data) ─
+        print("Student AI calls...")
+        student_cookies = await get_student_cookies()
+
+        print("  calling AI for attempt 1 feedback...")
+        fb1, score1 = await get_real_feedback(student_cookies, Q_CELLDIV, ANSWER_1, attempt=1)
+        print(f"  attempt 1 done — score: {score1.get('total_awarded') if score1 else 'N/A'}/{score1.get('total_max') if score1 else 'N/A'}")
+
+        print("  calling AI for attempt 2 feedback...")
+        fb2, score2 = await get_real_feedback(student_cookies, Q_CELLDIV, ANSWER_2, attempt=2)
+        print(f"  attempt 2 done — score: {score2.get('total_awarded') if score2 else 'N/A'}/{score2.get('total_max') if score2 else 'N/A'}")
+
+        # ── INSTRUCTOR SCREENSHOTS ────────────────────────────────────────
         print("Instructor pages...")
 
         # 1. Login page
         await page.goto(f"{BASE}/login")
         await page.wait_for_load_state("networkidle")
         await save(page, "instructor-login.png")
-
-        # Register + join class + log in
-        await page.request.post(f"{BASE}/api/auth/register",
-            data=json.dumps({"username": INST_USER, "password": INST_PASS, "invite_code": INVITE}),
-            headers={"Content-Type": "application/json"})
-        res = await page.request.post(f"{BASE}/api/auth/login",
-            data=json.dumps({"username": INST_USER, "password": INST_PASS}),
-            headers={"Content-Type": "application/json"})
-        assert res.ok, f"Login failed: {await res.text()}"
-        await page.request.post(f"{BASE}/api/classes/join",
-            data=json.dumps({"instructor_code": INST_CODE}),
-            headers={"Content-Type": "application/json"})
 
         # 2. Instructor dashboard
         await page.goto(f"{BASE}/instructor")
@@ -195,7 +280,7 @@ async def run():
         await page.wait_for_load_state("networkidle")
         await save(page, "instructor-classes.png")
 
-        # 5. Class analytics
+        # 5. Class analytics (attempt data already in DB from student AI calls above)
         await page.goto(f"{BASE}/instructor/classes/{CLASS_ID}/analytics")
         await page.wait_for_load_state("networkidle")
         await save(page, "instructor-analytics-class.png")
@@ -220,7 +305,7 @@ async def run():
             await export.scroll_into_view_if_needed()
         await save(page, "instructor-analytics-export.png")
 
-        # ── STUDENT SCREENSHOTS ───────────────────────────────────
+        # ── STUDENT SCREENSHOTS ───────────────────────────────────────────
         print("Student pages...")
         sp = await ctx.new_page()
 
@@ -239,40 +324,27 @@ async def run():
         await sp.wait_for_load_state("networkidle")
         await save(sp, "student-question-list.png")
 
-        # 11. Student workspace (blank, answer filled in)
+        # 11. Student workspace (blank)
         await sp.goto(f"{BASE}/student/{CLASS_ID}/{Q_CELLDIV}")
         await sp.wait_for_load_state("networkidle")
         await sp.wait_for_timeout(500)
         await save(sp, "student-workspace.png")
 
-        # Get student cookies for httpx API calls
-        student_cookies = await get_student_cookies()
-
-        # ── ATTEMPT 1: weaker answer ──────────────────────────────
-        print("  calling AI for attempt 1 feedback...")
-        fb1, score1 = await get_real_feedback(student_cookies, Q_CELLDIV, ANSWER_1, attempt=1)
-        print(f"  attempt 1 done — score: {score1.get('total_awarded') if score1 else 'N/A'}/{score1.get('total_max') if score1 else 'N/A'}")
-
-        # ── ATTEMPT 2: stronger answer ────────────────────────────
-        print("  calling AI for attempt 2 feedback...")
-        fb2, score2 = await get_real_feedback(student_cookies, Q_CELLDIV, ANSWER_2, attempt=2)
-        print(f"  attempt 2 done — score: {score2.get('total_awarded') if score2 else 'N/A'}/{score2.get('total_max') if score2 else 'N/A'}")
-
-        # 12. Feedback (attempt 2, text only, no score yet)
-        await sp.locator("#student-answer").fill(ANSWER_2)
-        await inject_feedback(sp, fb2, score2, show_score=False)
+        # 12. First attempt feedback (text only, no score yet)
+        await sp.locator("#student-answer").fill(ANSWER_1)
+        await inject_feedback(sp, fb1, score1, show_score=False)
         await save(sp, "student-feedback.png")
 
-        # 13. Feedback with score
-        await inject_feedback(sp, fb2, score2, show_score=True)
+        # 13. First attempt feedback with score
+        await inject_feedback(sp, fb1, score1, show_score=True)
         await save(sp, "student-feedback-scored.png")
 
-        # 14. Revision — show attempt 2 feedback (which includes PROGRESS section)
-        # fb2 should contain PROGRESS since it's attempt 2
+        # 14. Revision — attempt 2 answer + feedback (includes PROGRESS section)
+        await sp.locator("#student-answer").fill(ANSWER_2)
         await inject_feedback(sp, fb2, score2, show_score=True)
         await save(sp, "student-revision.png")
 
-        # 15. Session history — inject real scores from both attempts
+        # 15. Session history
         s1_total = f"{score1['total_awarded']} / {score1['total_max']}" if score1 else "—"
         s2_total = f"{score2['total_awarded']} / {score2['total_max']}" if score2 else "—"
         await sp.evaluate(f"""() => {{

@@ -478,14 +478,16 @@ essay-coach/
 │   ├── seed_screenshots.py              # Dev helper: seed sample data for screenshots
 │   └── seed_screenshots_quickstart.md  # How to use seed_screenshots.py
 └── docs/
-    └── tutorial.md            # This file
+    ├── tutorial.md                  # This file
+    ├── capture_screenshots.py       # Playwright script: auto-captures all tutorial screenshots
+    └── images/                      # Tutorial screenshot PNGs
 ```
 
 ## File-by-File Breakdown
 
 ### `config.py`
 
-Loads environment variables from `.env` using `python-dotenv`. Exposes:
+Loads environment variables from `.env` using `python-dotenv` with `override=True`, so values in `.env` always take precedence over any variables already in the shell environment. Exposes:
 
 - `ANTHROPIC_API_KEY` — required when `LLM_BACKEND=anthropic`.
 - `DATABASE_PATH` — SQLite file path; defaults to `essay_coach.db`. Ignored when `DATABASE_URL` is set.
@@ -705,8 +707,8 @@ Vanilla CSS using custom properties (CSS variables) for theming. Key layout deci
 - The class management page uses a two-column grid for the Create/Join action forms, collapsing to one column on mobile.
 - Auth pages (login, register) use a centered card layout (`max-width: 420px`).
 - Mobile breakpoint at 768px collapses both layouts to single-column.
-- Feedback background uses `--bg-subtle` (#f7f7f8) to visually distinguish it from the writing area.
-- Class badges (`.class-badge`) use a blue pill style (`#dbeafe` background, `#1d4ed8` text).
+- Theming uses a warm cream base (`--bg: #f5f1ea`) with dark teal accents (`--teal: #0d7d6c`) and 2px solid borders throughout — the "Blackboard" theme.
+- Class badges (`.class-badge`) use a teal pill style (`var(--teal-light)` background, `var(--teal-dark)` text, `var(--teal-mid)` border).
 - Score section (`.score-section`, `.score-total`, `.score-breakdown`, `.score-label`, `.score-fraction`) styles the score table shown below feedback.
 - Analytics pages (`.analytics-page`, `.analytics-table`, `.analytics-tiles`, `.analytics-tile`, `.score-dist-bar`, `.score-dist-seg`, `.score-high/mid/low`) style the class summary and session detail pages.
 - System font stack — no external fonts or CSS frameworks.

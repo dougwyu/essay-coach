@@ -194,22 +194,46 @@ The model answer is the most important field. It directly shapes the quality of 
 - **Write in prose.** The AI compares the student's essay against your answer, so writing in full sentences (rather than bullet points) helps it assess depth and structure more accurately.
 - **Don't worry about perfection.** The AI never quotes or paraphrases the model answer to students. It uses it as a reference, not a script.
 
+**Write one idea per paragraph, separated by blank lines.** The scoring engine splits the model answer on blank lines, so paragraph breaks are structurally important — not just stylistic. Each paragraph becomes one scoreable unit.
+
 **Example model answer for a Photosynthesis question:**
 
-> Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It occurs in two stages: light-dependent reactions in the thylakoid membranes and the Calvin cycle in the stroma. In the light reactions, water is split, oxygen is released, and ATP and NADPH are produced. The Calvin cycle uses CO2, ATP, and NADPH to synthesize glucose through carbon fixation. Chlorophyll absorbs light primarily in the blue and red wavelengths, reflecting green. Photosynthesis is fundamental to life as it produces oxygen and is the basis for most food chains and aerobic life.
+```
+Photosynthesis is the process by which plants, algae, and some bacteria convert
+light energy into chemical energy stored in glucose. It occurs in two stages:
+light-dependent reactions in the thylakoid membranes and the Calvin cycle in
+the stroma.
+
+In the light reactions, water is split, oxygen is released, and ATP and NADPH
+are produced. The Calvin cycle uses CO2, ATP, and NADPH to synthesize glucose
+through carbon fixation.
+
+Chlorophyll absorbs light primarily in the blue and red wavelengths, reflecting
+green. Photosynthesis is fundamental to life as it produces oxygen and is the
+basis for most food chains and aerobic life.
+```
 
 #### Adding Point Values for Quantitative Scoring (optional)
 
 You can optionally assign point values to paragraphs in your model answer by appending `[N]` (where N is a positive integer) at the end of a paragraph. When present, students receive a numeric score after each submission.
 
+**The blank line before each `[N]` marker is required.** The scoring engine identifies paragraphs by splitting on blank lines — a `[N]` at the end of a paragraph without a preceding blank line will not be detected as a separate section.
+
 **Example with scoring:**
 
 ```
-Photosynthesis is the process by which plants, algae, and some bacteria convert light energy into chemical energy stored in glucose. It occurs in two stages: light-dependent reactions in the thylakoid membranes and the Calvin cycle in the stroma. [3]
+Photosynthesis is the process by which plants, algae, and some bacteria convert
+light energy into chemical energy stored in glucose. It occurs in two stages:
+light-dependent reactions in the thylakoid membranes and the Calvin cycle in
+the stroma. [3]
 
-In the light reactions, water is split, oxygen is released, and ATP and NADPH are produced. The Calvin cycle uses CO2, ATP, and NADPH to synthesize glucose through carbon fixation. [4]
+In the light reactions, water is split, oxygen is released, and ATP and NADPH
+are produced. The Calvin cycle uses CO2, ATP, and NADPH to synthesize glucose
+through carbon fixation. [4]
 
-Chlorophyll absorbs light primarily in the blue and red wavelengths, reflecting green. Photosynthesis is fundamental to life as it produces oxygen and is the basis for most food chains and aerobic life. [3]
+Chlorophyll absorbs light primarily in the blue and red wavelengths, reflecting
+green. Photosynthesis is fundamental to life as it produces oxygen and is the
+basis for most food chains and aerobic life. [3]
 ```
 
 This assigns 3, 4, and 3 points to the three paragraphs (10 total). After each submission, students see a score breakdown — how many points they earned per section and their total out of 10.
